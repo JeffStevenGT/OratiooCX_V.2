@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { NavLink } from "react-router-dom";
-import { supabase, TABLA_CLIENTES } from "../supabaseClient";
+import { supabase, supabaseUrl, supabaseAnonKey, TABLA_CLIENTES } from "../supabaseClient";
 import {
   LayoutDashboard,
   Users,
@@ -274,21 +274,135 @@ export default function Sidebar({ onLogout }) {
           )}
       </nav>
 
-      {/* Abrir Orange - abre en el navegador del asesor */}
+      {/* Abrir Orange - descarga el lanzador para la PC del asesor */}
       {ABRIR_ORANGE_PERMS[userRol] && (
         <div className="p-2 border-t border-[#5d1a7a]">
-          <a
-            href="https://pangea.orange.es/"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={async function () {
+              const email = session.email || ''
+              if (!email) { alert('Inicia sesion primero'); return }
+
+              // Obtener proxy asignado
+              let proxy = ''
+              try {
+                const { data } = await supabase
+                  .from('usuarios')
+                  .select('proxy_asignado')
+                  .eq('email', email)
+                  .limit(1)
+                  .single()
+                if (data?.proxy_asignado) proxy = data.proxy_asignado
+              } catch {}
+
+              const proxyServer = proxy ? proxy.split(':').slice(0,2).join(':') : ''
+
+              // Generar script Python auto-contenido (con credenciales incluidas)
+              // La anon key es PUBLICA (esta en el frontend), no es secreto
+              const sUrl = supabaseUrl
+              const sKey = supabaseAnonKey
+              const scriptContent = (
+                '# -*- coding: utf-8 -*-\n' +
+                '# Oratioo CX - Lanzador Orange (generado para ' + email + ')\n' +
+                'import os, sys, json, time, subprocess, platform\n' +
+                'from urllib.request import Request, urlopen\n\n' +
+                'SUPABASE_URL = ' + JSON.stringify(sUrl) + '\n' +
+                'ANON_KEY = ' + JSON.stringify(sKey) + '\n' +
+                'EMAIL = ' + JSON.stringify(email) + '\n' +
+                'PROXY = ' + JSON.stringify(proxyServer) + '\n\n' +
+                '# Auto-instalarse en inicio de Windows (solo primera vez)\n' +
+                'if platform.system() == \'Windows\':\n' +
+                '    script_path = os.path.abspath(sys.argv[0])\n' +
+                '    startup_dir = os.path.expandvars(\'%APPDATA%\\\\Microsoft\\\\Windows\\\\Start Menu\\\\Programs\\\\Startup\')\n' +
+                '    vbs_path = os.path.join(startup_dir, \'Oratioo_Orange_\' + EMAIL.split(\'@\')[0] + \'.vbs\')\n' +
+                '    if not os.path.exists(vbs_path):\n' +
+                '        try:\n' +
+                '            with open(vbs_path, \'w\') as f:\n' +
+                '                f.write(\'CreateObject(\"Wscript.Shell\").Run \"\' + script_path + \'\", 0, False\')\n' +
+                '            print(\'Instalado en inicio de Windows. Se ejecutara automaticamente al encender el PC.\')\n' +
+                '        except:\n' +
+                '            print(\'No se pudo instalar en inicio. Ejecuta manualmente cada vez.\')\n' +
+                '\n' +
+                'while True:\n' +
+                '    try:\n' +
+                '        req = Request(SUPABASE_URL + \'/rest/v1/comandos_bot?comando=eq.abrir_navegador&estado=eq.pendiente&order=creado_el.asc&limit=5\')\n' +
+                '        req.add_header(\'apikey\', ANON_KEY)\n' +
+                '        req.add_header(\'Authorization\', \'Bearer \' + ANON_KEY)\n' +
+                '        with urlopen(req, timeout=10) as r:\n' +
+                '            cmds = json.loads(r.read())\n' +
+                '        for cmd in cmds:\n' +
+                '            params = cmd.get(\'parametros\', {}) or {}\n' +
+                '            if params.get(\'asesor_email\') == EMAIL:\n' +
+                '                print(\'Abriendo Orange...\')\n' +
+                '                url = \'https://pangea.orange.es/\'\n' +
+                '                if platform.system() == \'Windows\':\n' +
+                '                    chrome = os.path.expandvars(\'%ProgramFiles%\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe\')\n' +
+                '                    if not os.path.exists(chrome):\n' +
+                '                        chrome = os.path.expandvars(\'%LocalAppData%\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe\')\n' +
+                '                    if os.path.exists(chrome):\n' +
+                '                        args = [chrome]\n' +
+                '                        if PROXY:\n' +
+                '                            args.append(\'--proxy-server=http://\' + PROXY)\n' +
+                '                        args.append(url)\n' +
+                '                        subprocess.Popen(args)\n' +
+                '                    else:\n' +
+                '                        subprocess.Popen([\'start\', url], shell=True)\n' +
+                '                else:\n' +
+                '                    import webbrowser\n' +
+                '                    webbrowser.open(url)\n' +
+                '                patch = Request(SUPABASE_URL + \'/rest/v1/comandos_bot?id=eq.\' + str(cmd[\'id\']),\n' +
+                '                    data=json.dumps({\'estado\': \'completado\'}).encode(),\n' +
+                '                    headers={\'apikey\': ANON_KEY, \'Authorization\': \'Bearer \' + ANON_KEY,\'Content-Type\': \'application/json\'},\n' +
+                '                    method=\'PATCH\')\n' +
+                '                urlopen(patch)\n' +
+                '                print(\'Orange abierto correctamente\')\n' +
+                '        time.sleep(5)\n' +
+                '    except KeyboardInterrupt:\n' +
+                '        break\n' +
+                '    except:\n' +
+                '        time.sleep(5)\n' +
+                ''
+              )
+
+              // Descargar el script
+              const blob = new Blob([scriptContent], { type: 'text/plain;charset=utf-8' })
+              const urlObj = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = urlObj
+              a.download = 'abrir_orange_' + email.split('@')[0] + '.py'
+              document.body.appendChild(a)
+              a.click()
+              URL.revokeObjectURL(urlObj)
+              document.body.removeChild(a)
+
+              // Enviar comando a Supabase para que el agente lo recoja
+              await supabase.from('comandos_bot').insert({
+                maquina_destino: 'asesor_' + email,
+                comando: 'abrir_navegador',
+                parametros: { asesor_email: email, proxy_asignado: proxy },
+                estado: 'pendiente',
+              })
+
+              var msg = 'Archivo descargado: ' + email.split('@')[0] + '.py\n\n';
+              msg += 'INSTRUCCIONES (SOLO UNA VEZ):\n';
+              msg += '1. Abre una terminal (Win+R, cmd, Enter)\n';
+              msg += '2. Arrastra el .py a la terminal y presiona Enter\n';
+              msg += '3. Se abrira ventana con confirmacion\n';
+              msg += '4. CIERRA esa ventana\n\n';
+              msg += 'A PARTIR DE AHORA:\n';
+              msg += '- Se ejecuta solo al encender el PC\n';
+              msg += '- Cuando hagas clic en Abrir Orange\n';
+              msg += '  se abrira Chrome con proxy espanol\n';
+              msg += '- No necesitas hacer nada mas';
+              alert(msg)
+            }}
             className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-all duration-200 text-emerald-400 hover:text-white hover:bg-emerald-600"
-            title="Abrir Orange en tu navegador"
+            title="Abrir Orange"
           >
             <Globe size={18} className="shrink-0" />
             {!collapsed && (
               <span className="text-sm font-medium">Abrir Orange</span>
             )}
-          </a>
+          </button>
         </div>
       )}
 

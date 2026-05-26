@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 
+// Mapa de rutas protegidas por rol
 const ROUTE_PERMISSIONS = {
   '/dashboard': ['supervisor', 'back_office', 'it', 'jefe_area', 'desarrollador'],
   '/clientes': ['supervisor', 'back_office', 'it', 'jefe_area', 'desarrollador'],
@@ -10,6 +11,23 @@ const ROUTE_PERMISSIONS = {
   '/dialer': ['asesor', 'supervisor'],
   '/agenda': ['asesor', 'supervisor', 'back_office'],
   '/admin/users': ['jefe_area', 'desarrollador'],
+  '/usuarios': ['jefe_area', 'desarrollador'],
+  '/proxies': ['it', 'jefe_area', 'desarrollador'],
+  '/maquinas': ['it', 'jefe_area', 'desarrollador'],
+  '/workers': ['it', 'jefe_area', 'desarrollador'],
+  '/ranking': ['supervisor', 'jefe_area', 'desarrollador'],
+  '/metas': ['supervisor', 'jefe_area', 'desarrollador'],
+  '/alertas': ['supervisor', 'jefe_area', 'desarrollador'],
+}
+
+// Destino por defecto segun el rol
+const DEFAULT_ROUTES = {
+  asesor: '/dialer',
+  supervisor: '/dashboard',
+  back_office: '/dashboard',
+  it: '/dashboard',
+  jefe_area: '/dashboard',
+  desarrollador: '/dashboard',
 }
 
 export default function ProtectedRoute({ children }) {
@@ -18,21 +36,25 @@ export default function ProtectedRoute({ children }) {
   const location = useLocation()
 
   useEffect(() => {
-    const session = localStorage.getItem('oratioo_session')
-    if (session) {
-      const parsed = JSON.parse(session)
-      const userRol = parsed.rol || 'asesor'
-      const path = location.pathname
-      const allowed = ROUTE_PERMISSIONS[path]
+    const raw = localStorage.getItem('oratioo_session')
+    if (!raw) {
+      setAuthorized(false)
+      setChecking(false)
+      return
+    }
 
-      if (allowed && !allowed.includes(userRol)) {
-        // Redirigir segun el rol
-        const destino = userRol === 'asesor' ? '/dialer' : '/dashboard'
-        window.location.href = destino
-        setAuthorized(false)
-      } else {
-        setAuthorized(true)
-      }
+    const parsed = JSON.parse(raw)
+    const userRol = parsed.rol || 'asesor'
+    const path = location.pathname
+    const allowed = ROUTE_PERMISSIONS[path]
+
+    if (allowed && !allowed.includes(userRol)) {
+      // No tiene permiso -> redirigir
+      const destino = DEFAULT_ROUTES[userRol] || '/dashboard'
+      window.location.href = destino
+      setAuthorized(false)
+    } else {
+      setAuthorized(true)
     }
     setChecking(false)
   }, [location.pathname])
