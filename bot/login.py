@@ -35,7 +35,7 @@ def _escribir_como_humano(page: Page, selector: str, texto: str):
     campo.click()
     campo.fill("")
     for letra in texto:
-        page.keyboard.type(letra, delay=random.randint(50, 150))
+        page.keyboard.type(letra, delay=random.randint(20, 50))
     # CRÍTICO: Tab para que Angular registre el cambio
     page.keyboard.press("Tab")
     page.wait_for_timeout(random.randint(300, 800))
@@ -117,7 +117,7 @@ def seleccionar_marca_orange(page: Page):
     try:
         selector = "a.orange-box"
         page.wait_for_selector(selector, state="visible", timeout=20000)
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(800)
         page.click(selector)
         page.wait_for_selector("#orange-container", timeout=30000)
         print("  [Login] [OK] Marca Orange seleccionada")
@@ -130,13 +130,13 @@ def abrir_nuevo_acto_comercial(page: Page):
     print("  [Login] Preparando entorno (nuevo acto comercial)...")
     try:
         page.locator("button:has-text('Nuevo acto comercial')").first.click()
-        page.wait_for_timeout(1000)
+        page.wait_for_timeout(500)
 
         page.locator("li:has-text('Tarifas')").first.click()
 
         btn_crear = page.locator("button:has-text('Crear')").last
         btn_crear.wait_for(state="visible", timeout=20000)
-        page.wait_for_timeout(1500)
+        page.wait_for_timeout(800)
         btn_crear.click()
 
         # Esperar que aparezca el botón de cambiar cliente
@@ -248,8 +248,20 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True):
                     continue
 
             print("  [Extracción] Cargando ficha de cliente...")
-            page.wait_for_timeout(6000)
+            page.wait_for_timeout(2000)
             page.wait_for_selector(".mod-barclient__container-data", timeout=50000)
+
+            # ── DETECTAR CIMA GLOBAL (barra superior) ──
+            cima_global = False
+            try:
+                cima_btn = page.locator(".mod-barclient__container-lines-cima-btn")
+                if cima_btn.count() > 0:
+                    texto_cima = cima_btn.first.inner_text()
+                    cima_global = "isCima" in texto_cima or "CIMA" in texto_cima.upper()
+                    if cima_global:
+                        print("  [Extracción] [CIMA] Cliente CIMA detectado (barra superior)")
+            except Exception:
+                pass
 
             # ── 2. DATOS CABECERA ─────────────────────
             nombre = _extraer_texto(page, ".tooltip-text.name strong")
@@ -294,7 +306,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True):
 
                         if btn_tab.count() > 0:
                             btn_tab.click(force=True)
-                            page.wait_for_timeout(2000)
+                            page.wait_for_timeout(800)
 
                             tarjetas = bloque.locator(".card-tariff-info-text")
                             alertas = bloque.locator(".message-relevant .title")
@@ -317,31 +329,67 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True):
                     try:
                         heading = bloque.locator(".client-tariff-heading")
                         labels = heading.locator("span.label")
-                        etiquetas = [labels.nth(k).inner_text().strip() for k in range(labels.count())]
+                        etiquetas_raw = [labels.nth(k).inner_text().strip() for k in range(labels.count())]
                         texto_completo = heading.first.inner_text()
                     except Exception:
-                        etiquetas = []
+                        etiquetas_raw = []
                         texto_completo = ""
-                    es_cima = "CIMA" in etiquetas
-                    tiene_tv = "TV" in etiquetas
-                    es_principal = "Principal" in etiquetas
+                    # Buscar CIMA en etiquetas Y en todo el heading (fallback)
+                    es_cima = "CIMA" in etiquetas_raw or "CIMA" in texto_completo
+                    tiene_tv = "TV" in etiquetas_raw or "TV" in texto_completo
+                    es_principal = "Principal" in etiquetas_raw
                     # Extraer fecha activo desde
                     match_fecha = re.search(r'Activo desde\s+(\d{2}/\d{2}/\d{4})', texto_completo)
                     activo_desde = match_fecha.group(1) if match_fecha else "N/A"
 
-                    # ── Detectar Renove Mixto con variantes ──
+                    # ── Detectar Renove: escanear etiquetas de tarjetas visibles ──
                     renove_texto = campanas.get("Renove", "")
-                    tiene_rm = bool(re.search(r'Renove\s+mixto', renove_texto, re.IGNORECASE))
+                    # Escanear TODAS las tarjetas de campaña buscando label "Renove"
+                    tiene_rm = False
                     variante_renove = "N/A"
+                    renove_cards_textos = []
+                    try:
+                        cards = bloque.locator(".card-tariff-minimal")
+                        for c in range(cards.count()):
+                            card = cards.nth(c)
+                            label = card.locator(".card-tariff-label strong")
+                            if label.count() > 0:
+                                label_texto = label.first.inner_text().strip()
+                                if "Renove" in label_texto:
+                                    info = card.locator(".card-tariff-info-text")
+                                    texto_card = info.first.inner_text().strip() if info.count() > 0 else ""
+                                    renove_cards_textos.append(texto_card)
+                    except Exception:
+                        pass
+
+                    # Combinar texto de pestana + tarjetas escaneadas + heading
+                    texto_para_buscar = renove_texto + " " + " ".join(renove_cards_textos) + " " + texto_completo + (" global_cima" if cima_global else "")
+                    tiene_rm = bool(re.search(r'Renove\s+mixto', texto_para_buscar, re.IGNORECASE))
+                    # Si no es mixto pero hay tarjetas Renove, marcar como Renove (no mixto)
+                    tiene_renove_general = len(renove_cards_textos) > 0 or bool(re.search(r'Renove', texto_para_buscar, re.IGNORECASE))
+                    
+                    # Clasificar variante
                     if tiene_rm:
-                        if re.search(r'm[aá]ximo\s+descuento', renove_texto, re.IGNORECASE):
+                        if re.search(r'm[aá]ximo\s+descuento', texto_para_buscar, re.IGNORECASE):
                             variante_renove = "Renove mixto al mejor precio con máximo descuento"
-                        elif re.search(r'con\s+descuento', renove_texto, re.IGNORECASE):
+                        elif re.search(r'con\s+descuento', texto_para_buscar, re.IGNORECASE):
                             variante_renove = "Renove mixto al mejor precio con descuento"
-                        elif re.search(r'mejor\s+precio', renove_texto, re.IGNORECASE):
+                        elif re.search(r'mejor\s+precio', texto_para_buscar, re.IGNORECASE):
                             variante_renove = "Renove mixto al mejor precio"
                         else:
                             variante_renove = "Renove mixto"
+                    elif tiene_renove_general:
+                        # Renove no mixto (Multidispositivo, etc.)
+                        texto_completo_renove = " ".join(renove_cards_textos)
+                        if "MULTIDISPOSITIVO" in texto_completo_renove.upper():
+                            variante_renove = "Renove Multidispositivo"
+                        elif "ILIMITADO" in texto_completo_renove.upper() or "Ilimitado" in texto_completo_renove:
+                            variante_renove = "Renove Ilimitado"
+                        else:
+                            variante_renove = "Renove (otro)"
+                        
+                    # Usar cima_global como fallback SI es True
+                    es_cima = es_cima or cima_global
 
                     lineas_finales.append({
                         "DNI": dni,
@@ -356,7 +404,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True):
                         "variante_renove": variante_renove,
                         "tiene_tv": tiene_tv,
                         "es_principal": es_principal,
-                        "etiquetas": etiquetas,
+                        "etiquetas": etiquetas_raw,
                         "activo_desde": activo_desde,
                         "Destacadas": campanas.get("Destacadas", "N/A"),
                         "Renove": campanas.get("Renove", "N/A"),
@@ -371,7 +419,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True):
                         and not btn_siguiente.is_disabled()):
                     print("  [Extracción] -> Siguiente página de líneas...")
                     btn_siguiente.click(force=True)
-                    page.wait_for_timeout(4000)
+                    page.wait_for_timeout(2000)
                     pagina_actual += 1
                 else:
                     hay_mas_paginas = False

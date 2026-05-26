@@ -159,12 +159,12 @@ def iniciar_coordinador(cmd):
 
     print(f"[Agente] Iniciando coordinator para {MAQUINA_NOMBRE}...")
     try:
+        # Usar DEVNULL para evitar que el buffer de pipe se llene y congele el proceso
         proceso_coordinador = subprocess.Popen(
             [sys.executable, COORDINATOR],
             env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
         marcar_como(cmd["id"], "completado", f"PID: {proceso_coordinador.pid}")
         print(f"[Agente] Coordinator iniciado (PID: {proceso_coordinador.pid})")
@@ -308,9 +308,8 @@ def main():
                             proceso_coordinador = subprocess.Popen(
                                 [sys.executable, COORDINATOR],
                                 env=env,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE,
-                                text=True,
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
                             )
                             print(f"[Agente] Coordinator auto-lanzado (PID: {proceso_coordinador.pid})")
                         except Exception as e:

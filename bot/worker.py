@@ -309,15 +309,50 @@ def main():
                 # Tomar siguiente DNI
                 fila = tomar_siguiente_dni()
                 if not fila:
-                    log("[PAUSE]  No hay mas DNIs pendientes. Esperando 30s...")
-                    time.sleep(30)
+                    log("[PAUSE] No hay mas DNIs pendientes. Esperando 15s...")
+                    # Mantener sesion viva: navegar a pagina interna y volver
+                    try:
+                        page.evaluate("1+1")
+                    except Exception:
+                        log("[RECON] Pagina cerrada durante espera. Reconectando...")
+                        try:
+                            browser.close()
+                        except Exception:
+                            pass
+                        browser, context = crear_contexto_espana(p, proxy_config=PROXY_CONFIG)
+                        page = context.new_page()
+                        page.goto(ORANGE_URL, timeout=90000)
+                        manejar_cookies_flexible(page)
+                        realizar_login(page)
+                        seleccionar_marca_orange(page)
+                        abrir_nuevo_acto_comercial(page)
+                        log("[RECON] Reconexion exitosa")
+                    time.sleep(15)
                     continue
 
                 dni = fila["dni"]
                 reportar_actividad(dni)
 
                 # Pausa aleatoria
-                page.wait_for_timeout(random.randint(2000, 4000))
+                page.wait_for_timeout(random.randint(800, 1500))
+
+                # Verificar que la pagina sigue viva antes de procesar
+                try:
+                    page.evaluate("1+1")
+                except Exception:
+                    log("[RECON] Pagina cerrada, reconectando antes de procesar...")
+                    try:
+                        browser.close()
+                    except Exception:
+                        pass
+                    browser, context = crear_contexto_espana(p, proxy_config=PROXY_CONFIG)
+                    page = context.new_page()
+                    page.goto(ORANGE_URL, timeout=90000)
+                    manejar_cookies_flexible(page)
+                    realizar_login(page)
+                    seleccionar_marca_orange(page)
+                    abrir_nuevo_acto_comercial(page)
+                    log("[RECON] Reconexion exitosa")
 
                 # Procesar
                 exito = procesar_dni(page, dni)
