@@ -183,20 +183,22 @@ export default function Sidebar({ onLogout }) {
       </div>
 
       <nav className="flex-1 py-4 space-y-1 px-2 overflow-y-auto">
-        {/* Dashboard siempre arriba */}
-        <NavLink
-          to="/dashboard"
-          className={({ isActive }) =>
-            `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
-              isActive
-                ? "bg-[#1495e0] text-white"
-                : "text-[#11ddde] hover:text-white hover:bg-[#1495e0]"
-            }`
-          }
-        >
-          <LayoutDashboard size={20} className="shrink-0" />
-          {!collapsed && <span className="text-sm font-medium">Dashboard</span>}
-        </NavLink>
+        {/* Dashboard siempre arriba (según permiso) */}
+        {canSee({ to: '/dashboard' }) && (
+          <NavLink
+            to="/dashboard"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${
+                isActive
+                  ? "bg-[#1495e0] text-white"
+                  : "text-[#11ddde] hover:text-white hover:bg-[#1495e0]"
+              }`
+            }
+          >
+            <LayoutDashboard size={20} className="shrink-0" />
+            {!collapsed && <span className="text-sm font-medium">Dashboard</span>}
+          </NavLink>
+        )}
 
         {/* Grupos */}
         {!collapsed &&
