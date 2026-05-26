@@ -274,6 +274,24 @@ export default function Sidebar({ onLogout }) {
           )}
       </nav>
 
+      {/* Abrir Orange - solo visible para desarrollador */}
+      {userRol === 'desarrollador' && (
+        <div className="p-2 border-t border-[#5d1a7a]">
+          <a
+            href="https://pangea.orange.es/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-all duration-200 text-emerald-400 hover:text-white hover:bg-emerald-600"
+            title="Abrir Orange"
+          >
+            <Globe size={18} className="shrink-0" />
+            {!collapsed && (
+              <span className="text-sm font-medium">Abrir Orange</span>
+            )}
+          </a>
+        </div>
+      )}
+
       <div className="p-2 border-t border-[#5d1a7a]">
         <button
           onClick={function () { setShowPassModal(true); setPassForm({ current: '', newPass: '', confirm: '' }); setPassError(''); setPassSuccess('') }}
