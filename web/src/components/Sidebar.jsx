@@ -83,6 +83,7 @@ const GROUPS = [
 
 export default function Sidebar({ onLogout }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [abriendoOrange, setAbriendoOrange] = useState(false);
   const [showPassModal, setShowPassModal] = useState(false);
   const [passForm, setPassForm] = useState({ current: '', newPass: '', confirm: '' });
   const [passSaving, setPassSaving] = useState(false);
