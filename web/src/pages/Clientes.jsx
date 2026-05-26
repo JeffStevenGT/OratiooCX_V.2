@@ -1,0 +1,585 @@
+import { useState, useEffect, useMemo } from 'react'
+import {
+  Search,
+  Loader2,
+  RefreshCw,
+  ArrowUpDown,
+  Users,
+  ChevronDown,
+  ChevronUp,
+  X,
+  UserPlus,
+  Send,
+} from 'lucide-react'
+import { supabase, TABLA_CLIENTES, TABLA_PERFILES, TABLA_EQUIPOS } from '../supabaseClient'
+import FilaExpandible from '../components/FilaExpandible'
+import ExportButtons from '../components/ExportButtons'
+
+
+// ── Opciones de filtros ─────────────────────────────────────────
+
+const VARIANTES_VALIOSAS = [
+  { key: 'maximo', label: 'Máx descuento', bd: 'Renove mixto al mejor precio con máximo descuento', color: 'emerald' },
+  { key: 'con_descuento', label: 'Con descuento', bd: 'Renove mixto al mejor precio con descuento', color: 'blue' },
+  { key: 'mejor_precio', label: 'Mejor precio', bd: 'Renove mixto al mejor precio', color: 'amber' },
+  { key: 'basico', label: 'Básico', bd: 'Renove mixto', color: 'gray' },
+]
+
+const VARIANTES_MENORES = [
+  { key: 'multidispositivo', label: 'Multidispositivo', color: 'slate' },
+  { key: 'pago_unico', label: 'Pago único', color: 'slate' },
+]
+
+export default function Clientes() {
+  const [clientes, setClientes] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [sortConfig, setSortConfig] = useState({ key: null, dir: 'asc' })
+  const [cimaFilter, setCimaFilter] = useState('SI') // null | 'SI' | 'NO'
+  const [renoveFilter, setRenoveFilter] = useState('SI') // null | 'SI' | 'NO'
+  const [variantesActivas, setVariantesActivas] = useState([])
+  const [tagsActivas, setTagsActivas] = useState([])
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [expandido, setExpandido] = useState(null)
+  const showAssignBtn = true
+  const [assignModal, setAssignModal] = useState(false)
+  const [assignEquipoId, setAssignEquipoId] = useState('')
+  const [assignAsesorId, setAssignAsesorId] = useState('')
+  const [equipos, setEquipos] = useState([])
+  const [asesoresEquipo, setAsesoresEquipo] = useState([])
+  const [assigning, setAssigning] = useState(false)
+  const [assignMsg, setAssignMsg] = useState('')
+  const [assignCantidad, setAssignCantidad] = useState('')
+  const [clientesPage, setClientesPage] = useState(1)
+  const [clientesPageSize, setClientesPageSize] = useState(10)
+
+  const fetchClientes = async () => {
+    setLoading(true)
+    try {
+      const { data, error } = await supabase
+        .from(TABLA_CLIENTES)
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      let clientes = data || []
+
+
+
+      setClientes(clientes)
+    } catch (err) {
+      console.error('Error fetching clientes:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { fetchClientes() }, [])
+
+  // ── Reset paginación cuando cambian filtros ────────────────────
+  useEffect(() => { setClientesPage(1) }, [cimaFilter, renoveFilter, variantesActivas, tagsActivas, dateFrom, dateTo, search])
+
+
+
+  // ── Añadir/quitar filtros ──────────────────────────────────────
+
+  // ── Filtrado + búsqueda ────────────────────────────────────────
+
+  const filtered = useMemo(() => {
+    let result = [...clientes]
+
+    // Excluir no_cliente
+    // Solo mostrar leads procesados por el bot (estado = completado)
+    result = result.filter((c) => {
+      const ad = c.atributos_dinamicos || {}
+      return ad.estado === 'completado'
+    })
+
+    // ── Aplicar TODOS los filtros activos (AND) ──
+    // CIMA
+    if (cimaFilter === 'SI') {
+      result = result.filter((c) => (c.atributos_dinamicos || {}).cima === 'SI')
+    } else if (cimaFilter === 'NO') {
+      result = result.filter((c) => (c.atributos_dinamicos || {}).cima !== 'SI')
+    }
+
+    // Renove Mixto
+    if (renoveFilter === 'SI') {
+      result = result.filter((c) => !!(c.atributos_dinamicos || {}).tiene_renove_mixto)
+    } else if (renoveFilter === 'NO') {
+      result = result.filter((c) => !(c.atributos_dinamicos || {}).tiene_renove_mixto)
+    }
+
+    // Variantes de Renove (AND entre variantes seleccionadas)
+    for (const vk of variantesActivas) {
+      const vData = VARIANTES_VALIOSAS.find(x => x.key === vk)
+      if (vData) {
+        result = result.filter((c) => (c.atributos_dinamicos || {}).renove_mixto_variante === vData.bd)
+      }
+    }
+
+    // Tags (AND entre tags seleccionados)
+    for (const tk of tagsActivas) {
+      result = result.filter((c) => {
+        const ad = c.atributos_dinamicos || {}
+        const pestanas = ad.pestanas || {}
+        const todosDatos = JSON.stringify(ad).toLowerCase()
+        switch (tk) {
+          case 'multidispositivo':
+            return Object.values(pestanas).join(' ').toLowerCase().includes('multidispositivo') || todosDatos.includes('multidispositivo')
+          case 'pago_unico':
+            return Object.values(pestanas).join(' ').toLowerCase().includes('pago único') || todosDatos.includes('pago único')
+          default:
+            return true
+        }
+      })
+    }
+
+    // ── Rango de fechas ──
+    if (dateFrom) {
+      result = result.filter((c) => {
+        if (!c.created_at) return false
+        return c.created_at >= `${dateFrom}T00:00:00Z`
+      })
+    }
+    if (dateTo) {
+      result = result.filter((c) => {
+        if (!c.created_at) return false
+        return c.created_at <= `${dateTo}T23:59:59Z`
+      })
+    }
+
+    // ── Búsqueda ──
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      result = result.filter((c) => {
+        const dni = (c.dni || '').toLowerCase()
+        const nombre = (c.atributos_dinamicos?.datos_basicos?.nombre || '').toLowerCase()
+        const linea = (c.linea || c.atributos_dinamicos?.linea?.linea_principal || '').toLowerCase()
+        return dni.includes(q) || nombre.includes(q) || linea.includes(q)
+      })
+    }
+
+    // ── Ordenar ──
+    if (sortConfig.key) {
+      result.sort((a, b) => {
+        let aVal, bVal
+        const attrA = a.atributos_dinamicos || {}
+        const attrB = b.atributos_dinamicos || {}
+        switch (sortConfig.key) {
+          case 'dni': aVal = a.dni || ''; bVal = b.dni || ''; break
+          case 'nombre': aVal = attrA.datos_basicos?.nombre || ''; bVal = attrB.datos_basicos?.nombre || ''; break
+          case 'cima': aVal = attrA.cima || ''; bVal = attrB.cima || ''; break
+          case 'linea': aVal = a.linea || ''; bVal = b.linea || ''; break
+          case 'paquete': aVal = a.paquete || ''; bVal = b.paquete || ''; break
+          case 'renove': aVal = attrA.tipo_renove || ''; bVal = attrB.tipo_renove || ''; break
+          case 'estado': aVal = attrA.estado || ''; bVal = attrB.estado || ''; break
+          case 'fecha': aVal = a.created_at || ''; bVal = b.created_at || ''; break
+          default: return 0
+        }
+        if (aVal < bVal) return sortConfig.dir === 'asc' ? -1 : 1
+        if (aVal > bVal) return sortConfig.dir === 'asc' ? 1 : -1
+        return 0
+      })
+    }
+
+    return result
+  }, [clientes, search, sortConfig, cimaFilter, renoveFilter, variantesActivas, tagsActivas, dateFrom, dateTo])
+
+  const toggleSort = (key) => {
+    setSortConfig((prev) => ({ key, dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc' }))
+  }
+
+  const SortHeader = ({ label, sortKey }) => (
+    <th className="table-header px-4 py-3 cursor-pointer hover:text-oratioo-dark select-none"
+      onClick={() => toggleSort(sortKey)}>
+      <div className="flex items-center gap-1">
+        {label}
+        {sortConfig.key === sortKey
+          ? (sortConfig.dir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)
+          : <ArrowUpDown size={12} className="opacity-30" />}
+      </div>
+    </th>
+  )
+
+  const totalReales = clientes.filter((c) => {
+    const ad = c.atributos_dinamicos || {}
+    return ad.estado !== "no_cliente"
+  })
+
+  const toggleCimaFilter = () => {
+    if (cimaFilter === 'SI') setCimaFilter(null)
+    else setCimaFilter('SI')
+  }
+
+  const toggleRenoveFilter = () => {
+    if (renoveFilter === 'SI') setRenoveFilter(null)
+    else setRenoveFilter('SI')
+  }
+
+  const toggleVariante = (key) => {
+    setVariantesActivas(prev =>
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    )
+  }
+
+  const toggleTag = (key) => {
+    setTagsActivas(prev =>
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    )
+  }
+
+  const clearAllFilters = () => {
+    setCimaFilter(null)
+    setRenoveFilter(null)
+    setVariantesActivas([])
+    setTagsActivas([])
+    setDateFrom('')
+    setDateTo('')
+  }
+
+  // Bulk Assign
+  const openAssignModal = async () => {
+    // Obtener equipos distintos desde la tabla usuarios
+    const { data: users } = await supabase.from('usuarios').select('equipo').not('equipo', 'eq', '').not('equipo', 'is', null)
+    const equiposUnicos = [...new Set((users || []).map(u => u.equipo).filter(Boolean))]
+    const equiposList = equiposUnicos.map((nombre, i) => ({ id: i + 1, nombre }))
+    setEquipos([{ id: 0, nombre: 'Todos los equipos' }, ...equiposList])
+    setAssignEquipoId('')
+    setAssignAsesorId('')
+    setAssignCantidad('')
+    setAssignMsg('')
+    setAssignModal(true)
+  }
+  useEffect(() => {
+    if (assignEquipoId) {
+      // Equipo especifico
+      supabase.from('usuarios').select('id, nombre').eq('rol', 'asesor').eq('equipo', assignEquipoId).eq('activo', true)
+        .then(({ data }) => setAsesoresEquipo(data || []))
+    } else {
+      // Todos los asesores activos (sin filtrar por equipo)
+      supabase.from('usuarios').select('id, nombre').eq('rol', 'asesor').eq('activo', true)
+        .then(({ data }) => setAsesoresEquipo(data || []))
+    }
+  }, [assignEquipoId])
+  const bulkAssign = async () => {
+    setAssigning(true)
+    setAssignMsg('')
+    let leads = filtered  // Todos los leads visibles (incluye ya asignados)
+    const ases = asesoresEquipo
+    if (!leads.length) { setAssignMsg('No hay leads en vista'); setAssigning(false); return }
+    if (!ases.length) { setAssignMsg('No hay asesores en este equipo'); setAssigning(false); return }
+    // Aplicar límite de cantidad
+    const limite = parseInt(assignCantidad) || leads.length
+    if (limite > 0 && limite < leads.length) leads = leads.slice(0, limite)
+    let count = 0
+    for (let i = 0; i < leads.length; i++) {
+      const aId = assignAsesorId ? parseInt(assignAsesorId) : ases[i % ases.length].id
+      const ad = { ...(leads[i].atributos_dinamicos || {}), pipeline: { asesor_id: aId, estado: 'asignado', ultimo_cambio: new Date().toISOString() } }
+      await supabase.from('lineas').update({ atributos_dinamicos: ad }).eq('dni', leads[i].dni)
+      count++
+    }
+    setAssignMsg('OK ' + count + ' leads asignados')
+    setAssigning(false)
+    setTimeout(() => { setAssignModal(false); fetchClientes() }, 1500)
+  }
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-oratioo-dark flex items-center gap-2"><Users size={22} className="text-oratioo-purple" /> Clientes</h1>
+          <p className="text-sm text-oratioo-gray mt-1">
+            {(cimaFilter || renoveFilter || variantesActivas.length > 0 || tagsActivas.length > 0 || dateFrom || dateTo)
+              ? `${filtered.length} de ${totalReales.length} clientes (filtros activos)`
+              : `${filtered.length} clientes encontrados (de ${totalReales.length} reales)`}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {showAssignBtn && filtered.length > 0 && (
+            <button onClick={openAssignModal} className="bg-[#0a6ea9] hover:bg-[#085d8f] text-white flex items-center gap-2 text-xs px-4 py-2 rounded-lg transition-all">
+              <Send size={14} /> Asignar leads
+            </button>
+          )}
+          <button onClick={fetchClientes} className="btn-primary p-2" title="Recargar">
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </div>
+
+      {/* Filtros */}
+
+      {/* Filtros principales - siempre visibles */}
+      <div className="card !p-4 space-y-3">
+        {/* Barra superior: busqueda + acciones */}
+        <div className="flex items-center justify-between gap-3">
+          {/* Izquierda: busqueda */}
+          <div className="relative flex-1 min-w-[200px] max-w-md">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#7c757c]" />
+            <input
+              type="text" value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por DNI, nombre o linea..."
+              className="w-full bg-white border border-oratioo-border rounded-lg pl-9 pr-8 py-2 text-sm text-oratioo-dark placeholder-[#7c757c] focus:outline-none focus:ring-2 focus:ring-[#0a6ea9]/20 focus:border-[#0a6ea9]"
+            />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#7c757c] hover:text-[#0a6ea9]">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Derecha: fechas + export + refresh */}
+          <div className="flex items-center gap-2 shrink-0">
+            <input
+              type="date" value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="bg-white border border-[#e8dce6] rounded px-2.5 py-1.5 text-xs text-[#1a1030] w-[135px]"
+              title="Fecha inicio"
+            />
+            <span className="text-[#7c757c] text-xs">-</span>
+            <input
+              type="date" value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="bg-white border border-[#e8dce6] rounded px-2.5 py-1.5 text-xs text-[#1a1030] w-[135px]"
+              title="Fecha fin"
+            />
+            <ExportButtons data={filtered} />
+          </div>
+        </div>
+
+        {/* Fila de filtros rapidos */}
+        <div className="flex flex-wrap items-center gap-2">
+
+          {/* CIMA toggle */}
+          <span
+            onClick={() => toggleCimaFilter()}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer select-none transition-all ${
+              cimaFilter === 'SI'
+                ? 'bg-emerald-100 text-emerald-700 border border-emerald-300 shadow-sm'
+                : 'bg-white text-oratioo-dark border border-oratioo-border hover:border-gray-400 hover:shadow-sm'
+            }`}
+          >
+            CIMA
+          </span>
+
+          {/* Renove toggle */}
+          <span
+            onClick={() => toggleRenoveFilter()}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer select-none transition-all ${
+              renoveFilter === 'SI'
+                ? 'bg-[#e6f3fb] text-[#0a6ea9] border border-[#b8ddf4] shadow-sm'
+                : 'bg-white text-oratioo-dark border border-oratioo-border hover:border-gray-400 hover:shadow-sm'
+            }`}
+          >
+            Renove Mixto
+          </span>
+
+          <span className="text-oratioo-gray text-xs">|</span>
+
+          {/* Variantes valiosas - 4 colores */}
+          <span className="text-xs text-oratioo-gray font-medium mr-1">Variantes:</span>
+          {VARIANTES_VALIOSAS.map((v) => {
+            const activa = variantesActivas.includes(v.key)
+            const colorMap = {
+              emerald: 'border-emerald-300 text-emerald-700 bg-emerald-100',
+              blue: 'border-blue-300 text-blue-700 bg-blue-100',
+              amber: 'border-amber-300 text-amber-700 bg-amber-100',
+              gray: 'border-gray-300 text-[#1a1030] bg-gray-100',
+            }
+            const colorOff = 'bg-white text-oratioo-dark border border-oratioo-border hover:border-gray-400'
+            return (
+              <span key={v.key}
+                onClick={() => toggleVariante(v.key)}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium cursor-pointer select-none transition-all border ${
+                  activa ? colorMap[v.color] || colorMap.gray : colorOff
+                } hover:border-gray-500`}
+              >
+                {activa ? '\u2713' : '\u25CB'} {v.label}
+              </span>
+            )
+          })}
+
+          <span className="text-oratioo-gray text-xs">|</span>
+
+          {/* Tags: Multidispositivo + Pago único */}
+          <span className="text-xs text-oratioo-gray font-medium mr-1">Otros:</span>
+          {VARIANTES_MENORES.map((v) => {
+            const activa = tagsActivas.includes(v.key)
+            return (
+              <span key={v.key}
+                onClick={() => toggleTag(v.key)}
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium cursor-pointer select-none transition-all border ${
+                  activa
+                    ? 'border-slate-300 text-slate-700 bg-slate-100'
+                    : 'bg-white text-oratioo-dark border border-oratioo-border hover:border-gray-400'
+                }`}
+              >
+                {activa ? '\u2713' : '\u25CB'} {v.label}
+              </span>
+            )
+          })}
+
+        {/* Limpiar filtros */}
+        {(cimaFilter || renoveFilter || variantesActivas.length > 0 || tagsActivas.length > 0 || dateFrom || dateTo) && (
+          <button onClick={clearAllFilters}
+            className="text-xs text-oratioo-gray hover:text-oratioo-purple underline ml-2">
+            Limpiar filtros
+          </button>
+        )}
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="card !p-0 overflow-hidden">
+        <div className="overflow-x-auto scrollbar-thin">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-oratioo-border">
+                <th className="table-header px-4 py-3 w-10"></th>
+                <SortHeader label="DNI" sortKey="dni" />
+                <SortHeader label="Nombre" sortKey="nombre" />
+                <SortHeader label="CIMA" sortKey="cima" />
+                <SortHeader label="Línea Principal" sortKey="linea" />
+                <SortHeader label="Paquete" sortKey="paquete" />
+                <SortHeader label="Tipo Renove" sortKey="renove" />
+                <SortHeader label="Estado" sortKey="estado" />
+                <SortHeader label="Fecha" sortKey="fecha" />
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={9} className="text-center py-12">
+                  <Loader2 size={24} className="animate-spin text-oratioo-purple mx-auto mb-2" />
+                  <p className="text-oratioo-gray text-sm">Cargando clientes...</p>
+                </td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={9} className="text-center py-12">
+                  <Users size={32} className="text-oratioo-gray mx-auto mb-2" />
+                  <p className="text-oratioo-gray text-sm">No se encontraron clientes</p>
+                  <p className="text-oratioo-gray text-xs mt-1">Intenta ajustar los filtros</p>
+                </td></tr>
+              ) : (
+                (() => {
+                  const start = (clientesPage - 1) * clientesPageSize
+                  const paginated = filtered.slice(start, start + clientesPageSize)
+                  return paginated.map((c) => (
+                    <FilaExpandible key={c.dni + (c.id || '')}
+                      cliente={c}
+                      abierto={expandido === c.dni}
+                      onToggle={() => setExpandido(expandido === c.dni ? null : c.dni)} />
+                  ))
+                })()
+              )}
+            </tbody>
+          </table>
+        </div>
+        {filtered.length > clientesPageSize && (
+          <div className="border-t border-[#e8dce6] px-4 py-2 flex items-center justify-between bg-[#faf8fa]">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#7c757c]">
+                {filtered.length} resultados — Pág. {clientesPage} de {Math.ceil(filtered.length / clientesPageSize)}
+              </span>
+              <select value={clientesPageSize} onChange={e => { setClientesPageSize(Number(e.target.value)); setClientesPage(1) }}
+                className="bg-white border border-[#e8dce6] rounded px-2 py-1 text-xs text-[#1a1030]">
+                <option value={10}>10 / pág</option>
+                <option value={25}>25 / pág</option>
+                <option value={50}>50 / pág</option>
+                <option value={100}>100 / pág</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setClientesPage(p => Math.max(1, p - 1))} disabled={clientesPage === 1}
+                className="px-3 py-1.5 text-xs rounded-lg border border-[#e8dce6] bg-white text-[#1a1030] hover:bg-[#f5ebf3] disabled:opacity-30 disabled:cursor-not-allowed">
+                Anterior
+              </button>
+              {Array.from({ length: Math.min(5, Math.ceil(filtered.length / clientesPageSize)) }, (_, i) => {
+                const total = Math.ceil(filtered.length / clientesPageSize)
+                let start = Math.max(1, clientesPage - 2)
+                if (start + 4 > total) start = Math.max(1, total - 4)
+                const pageNum = start + i
+                if (pageNum > total) return null
+                return (
+                  <button key={pageNum} onClick={() => setClientesPage(pageNum)}
+                    className={`px-3 py-1.5 text-xs rounded-lg border ${
+                      pageNum === clientesPage ? 'bg-[#0a6ea9] text-white border-[#0a6ea9]' : 'border-[#e8dce6] bg-white text-[#1a1030] hover:bg-[#f5ebf3]'
+                    }`}>
+                    {pageNum}
+                  </button>
+                )
+              })}
+              <button onClick={() => setClientesPage(p => Math.min(Math.ceil(filtered.length / clientesPageSize), p + 1))}
+                disabled={clientesPage === Math.ceil(filtered.length / clientesPageSize)}
+                className="px-3 py-1.5 text-xs rounded-lg border border-[#e8dce6] bg-white text-[#1a1030] hover:bg-[#f5ebf3] disabled:opacity-30 disabled:cursor-not-allowed">
+                Siguiente
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      {/* Bulk Assign Modal */}
+      {assignModal && (() => {
+        const totalLeads = filtered.length
+        const yaAsignados = filtered.filter(c => c.atributos_dinamicos?.pipeline?.asesor_id).length
+        const leadsAAssign = parseInt(assignCantidad) || totalLeads
+        return (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setAssignModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-[#1a1030]">Asignar leads</h2>
+              <button onClick={() => setAssignModal(false)} className="p-1 rounded hover:bg-[#f5ebf3]"><X size={18} /></button>
+            </div>
+            <p className="text-sm text-[#7c757c] mb-2">{totalLeads} leads en vista, <strong>{yaAsignados}</strong> ya asignados</p>
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <label className="block text-xs text-[#7c757c] mb-1">Cuantos asignar?</label>
+                  <div className="flex items-center gap-2">
+                    <input type="number" min="1" max={totalLeads}
+                      value={assignCantidad}
+                      onChange={e => setAssignCantidad(e.target.value)}
+                      placeholder={String(totalLeads)}
+                      className="w-20 border border-[#e8dce6] rounded-lg px-3 py-2 text-sm text-center"
+                    />
+                    <span className="text-xs text-[#7c757c]">
+                      {assignCantidad ? `de ${totalLeads} leads` : `de ${totalLeads} (todos)`}
+                    </span>
+                    <button onClick={() => setAssignCantidad('')} className="text-xs text-[#1495e0] hover:underline">
+                      {assignCantidad ? 'Todos' : ''}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-[#7c757c] mb-1">Equipo</label>
+                <select value={assignEquipoId} onChange={e => setAssignEquipoId(e.target.value)} className="w-full border border-[#e8dce6] rounded-lg px-3 py-2 text-sm">
+                  {equipos.map(eq => <option key={eq.id} value={eq.nombre}>{eq.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-[#7c757c] mb-1">Asesor</label>
+                <select value={assignAsesorId} onChange={e => setAssignAsesorId(e.target.value)} className="w-full border border-[#e8dce6] rounded-lg px-3 py-2 text-sm">
+                  <option value="">Repartir entre todos</option>
+                  {asesoresEquipo.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                </select>
+              </div>
+              {assignMsg && <p className={assignMsg.startsWith('OK') ? 'text-sm text-emerald-600' : 'text-sm text-red-500'}>{assignMsg}</p>}
+              <button onClick={bulkAssign} disabled={assigning} className="w-full bg-[#0a6ea9] hover:bg-[#085d8f] text-white rounded-lg py-2.5 text-sm font-medium disabled:opacity-50">
+                {assigning ? 'Asignando...' : (
+                  assignCantidad
+                    ? `Asignar ${parseInt(assignCantidad) || 0} leads`
+                    : `Asignar todos (${totalLeads})`
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+      })()}
+    </div>
+  )
+}
+

@@ -1,0 +1,22 @@
+[W2|06:50:57] [INI]  Worker iniciado (PID: 10396)
+[W2|06:50:57] [SIN]  Proxy: http://92.113.237.71:7155
+[W2|06:51:08] [ERR]  Error crítico: ORANGE_USER y ORANGE_PASS deben estar en .env
+Traceback (most recent call last):
+  File "C:\Users\Jeff\Desktop\Proyectos\Oratioo_CX\bot\worker.py", line 312, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\Jeff\Desktop\Proyectos\Oratioo_CX\bot\worker.py", line 308, in main
+    log(f"\U0001f4ca Resumen: [OK]  {procesados} | [ERR]  {errores}")
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff\Desktop\Proyectos\Oratioo_CX\bot\worker.py", line 56, in log
+    print(f"[W{WORKER_ID}|{t}] {msg}")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Jeff\AppData\Local\Programs\Python\Python313\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f4ca' in position 14: character maps to <undefined>
+[W2|07:19:26] [INI]  Worker iniciado (PID: 1744)
+[W2|07:19:26] [SIN]  Proxy: http://109.196.161.89:6537
+  [Login] Iniciando sesión...
+[W2|07:19:48] [ERR]  Error crítico: Fallo en login: 'charmap' codec can't encode character '\u2705' in position 10: character maps to <undefined>
+[W2|07:19:49] Resumen -> Procesados: [OK] 0 | [ERR] 0

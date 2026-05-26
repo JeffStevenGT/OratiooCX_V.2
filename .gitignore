@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.local
+__pycache__/
+*.pyc
+bot/proxies.txt
+bot/numeros.txt
+bot/venv/
