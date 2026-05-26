@@ -274,82 +274,68 @@ export default function Sidebar({ onLogout }) {
           )}
       </nav>
 
-      {/* Abrir Orange - descarga .bat con proxy */}
+      {/* Abrir Orange - abre en PC-Jeff */}
       {ABRIR_ORANGE_PERMS[userRol] && (
         <div className="p-2 border-t border-[#5d1a7a]">
           <button
             onClick={async function () {
-              const email = session.email || ''
-              if (!email) { alert('Inicia sesion primero'); return }
-
-              // Obtener proxy asignado
-              let proxy = ''
+              setAbriendoOrange(true)
               try {
-                const { data } = await supabase
-                  .from('usuarios')
-                  .select('proxy_asignado')
-                  .eq('email', email)
-                  .limit(1)
-                  .single()
-                if (data?.proxy_asignado) proxy = data.proxy_asignado
-              } catch {}
+                let proxyAsignado = ''
+                try {
+                  const { data } = await supabase
+                    .from('usuarios')
+                    .select('proxy_asignado')
+                    .eq('email', session.email || '')
+                    .limit(1)
+                    .single()
+                  if (data?.proxy_asignado) proxyAsignado = data.proxy_asignado
+                } catch {}
 
-              if (!proxy) {
-                window.open('https://pangea.orange.es/', '_blank')
-                return
+                await supabase.from('comandos_bot').insert({
+                  maquina_destino: 'PC-Jeff',
+                  comando: 'abrir_navegador',
+                  parametros: { asesor_id: myId || '0', proxy_asignado: proxyAsignado },
+                  estado: 'pendiente',
+                })
+                setTimeout(function () { setAbriendoOrange(false) }, 2000)
+              } catch {
+                setAbriendoOrange(false)
               }
-
-              // Formato: ip:puerto:user:pass
-              const partes = proxy.split(':')
-              const ip = partes[0]
-              const puerto = partes[1]
-              const user = partes[2] || ''
-              const pass = partes[3] || ''
-
-              // Crear .bat que abre Chrome SOLO con proxy (sin afectar el sistema)
-              const bat = [
-                '@echo off',
-                'echo Abriendo Orange con proxy espanol...',
-                '',
-                ':: Guardar credenciales del proxy en Windows',
-                'cmdkey /add:' + ip + ':' + puerto + ' /user:' + user + ' /pass:' + pass + ' >nul 2>&1',
-                '',
-                ':: Buscar Chrome/Chromium y abrirlo SOLO con proxy',
-                'set CHROME="%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe"',
-                'if not exist %CHROME% set CHROME="%LocalAppData%\\Google\\Chrome\\Application\\chrome.exe"',
-                'if not exist %CHROME% set CHROME="%ProgramFiles(x86)%\\Microsoft\\Edge\\Application\\msedge.exe"',
-                '',
-                'if exist %CHROME% (',
-                '  %CHROME% --proxy-server=http://' + ip + ':' + puerto + ' https://pangea.orange.es/',
-                ') else (',
-                '  start https://pangea.orange.es/',
-                '  echo Chrome no encontrado. Se abrio sin proxy.',
-                ')',
-                'pause'
-              ].join('\n')
-
-              const blob = new Blob([bat], { type: 'application/octet-stream' })
-              const urlObj = URL.createObjectURL(blob)
-              const a = document.createElement('a')
-              a.href = urlObj
-              a.download = 'abrir_orange.bat'
-              document.body.appendChild(a)
-              a.click()
-              URL.revokeObjectURL(urlObj)
-              document.body.removeChild(a)
             }}
-            className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-all duration-200 text-emerald-400 hover:text-white hover:bg-emerald-600"
-            title="Descargar lanzador"
+            disabled={abriendoOrange}
+            className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-all duration-200 disabled:opacity-50 ${
+              abriendoOrange
+                ? 'bg-emerald-600 text-white'
+                : 'text-emerald-400 hover:text-white hover:bg-emerald-600'
+            }`}
+            title="Abrir Orange en PC-Jeff"
           >
-            <Globe size={18} className="shrink-0" />
+            {abriendoOrange ? (
+              <Loader2 size={18} className="animate-spin shrink-0" />
+            ) : (
+              <Globe size={18} className="shrink-0" />
+            )}
             {!collapsed && (
-              <span className="text-sm font-medium">Abrir Orange</span>
+              <span className="text-sm font-medium">
+                {abriendoOrange ? 'Abriendo...' : 'Abrir Orange'}
+              </span>
             )}
           </button>
         </div>
       )}
 
       <div className="p-2 border-t border-[#5d1a7a]">
+        <button
+          onClick={function () { setShowPassModal(true); setPassForm({ current: '', newPass: '', confirm: '' }); setPassError(''); setPassSuccess('') }}
+          className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-[#11ddde] hover:text-white hover:bg-[#5d1a7a] transition-all duration-200"
+        >
+          <KeyRound size={20} className="shrink-0" />
+          {!collapsed && (
+            <span className="text-sm font-medium">Cambiar contraseña</span>
+          )}
+        </button>
+      </div><div className="p-2 border-t border-[#5d1a7a]">
         <button
           onClick={function () { setShowPassModal(true); setPassForm({ current: '', newPass: '', confirm: '' }); setPassError(''); setPassSuccess('') }}
           className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-[#11ddde] hover:text-white hover:bg-[#5d1a7a] transition-all duration-200"
