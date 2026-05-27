@@ -92,12 +92,21 @@ def reportar_heartbeat():
 
 # ── Comandos ──────────────────────────────────────
 def buscar_comandos():
-    """Busca comandos 'pendiente' para esta máquina."""
-    return _api(
+    """Busca comandos 'pendiente' para esta máquina (o globales sin destino)."""
+    comandos = _api(
         "GET",
         f"/comandos_bot?maquina_destino=eq.{MAQUINA_NOMBRE}&estado=eq.pendiente"
-        f"&order=creado_el.asc&limit=5",
-    )
+        f"&order=creado_el.asc&limit=5"
+    ) or []
+    # También buscar comandos sin máquina destino (globales, ej: abrir_navegador)
+    globales = _api(
+        "GET",
+        f"/comandos_bot?maquina_destino=is.null&estado=eq.pendiente"
+        f"&order=creado_el.asc&limit=5"
+    ) or []
+    if globales:
+        comandos.extend(globales)
+    return comandos
 
 
 def marcar_como(comando_id, estado, resultado=""):
@@ -262,8 +271,41 @@ def detener_coordinador(cmd):
 
 
 # ── Loop principal ────────────────────────────────
+def _resetear_dnis_colgados():
+    """Resetea DNIs colgados (en_progreso por crash, error por fallo) a pendiente."""
+    try:
+        total_reseteados = 0
+        for estado_origen in ['en_progreso', 'error']:
+            rows = _api("GET", f"/lineas?select=id,atributos_dinamicos&atributos_dinamicos->>estado=eq.{estado_origen}&limit=200")
+            if rows:
+                for row in rows:
+                    ad = row.get("atributos_dinamicos", {})
+                    if isinstance(ad, str):
+                        import json as _json
+                        try: ad = _json.loads(ad)
+                        except: ad = {}
+                    ad["estado"] = "pendiente"
+                    _api("PATCH", f"/lineas?id=eq.{row['id']}&atributos_dinamicos->>estado=eq.{estado_origen}",
+                         {"atributos_dinamicos": ad})
+                total_reseteados += len(rows)
+                print(f"[Agente] ♻️  {len(rows)} DNIs en '{estado_origen}' reseteados a pendiente")
+        if total_reseteados > 0:
+            print(f"[Agente] ♻️  Total: {total_reseteados} DNIs recuperados")
+    except Exception:
+        pass
+
+
 def main():
     global proceso_coordinador
+
+    # Forzar UTF-8 en Windows para evitar crashes por encoding
+    import sys as _sys
+    if hasattr(_sys.stdout, 'reconfigure'):
+        try: _sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        except: pass
+    if hasattr(_sys.stderr, 'reconfigure'):
+        try: _sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+        except: pass
 
     print(f"\n{'='*50}")
     print(f"[Agente] ORATIOO CX - AGENTE")
@@ -272,6 +314,9 @@ def main():
     print(f"  Supabase: {'OK' if SUPABASE_URL and SERVICE_KEY else 'FALLA'}")
     print(f"  Coordinator: {COORDINATOR}")
     print(f"{'='*50}\n")
+
+    # Resetea2s DNIs colgados al arrancar
+    _resetear_dnis_colgados()
 
     if not SUPABASE_URL or not SERVICE_KEY:
         print("[Agente] ERROR: SUPABASE_URL o SERVICE_KEY no configurados en .env")
@@ -336,6 +381,12 @@ def main():
             print("\n[Agente] Deteniendo agente...")
             if proceso_coordinador:
                 detener_coordinador({"id": 0, "comando": "detener"})
+            # Marcar máquina como offline en Supabase
+            try:
+                _api("PATCH", f"/maquinas?nombre=eq.{MAQUINA_NOMBRE}", {"estado": "offline"})
+                print(f"[Agente] Máquina '{MAQUINA_NOMBRE}' marcada como offline")
+            except:
+                pass
             break
         except Exception as e:
             print(f"[Agente] Error en loop: {e}")

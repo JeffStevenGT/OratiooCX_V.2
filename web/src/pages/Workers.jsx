@@ -112,6 +112,14 @@ export default function Workers() {
     }
   }
 
+  const handlePausarTodos = () => {
+    for (const w of workers) {
+      if (w.estado === 'activo') {
+        enviarComando(w.maquina, 'pausar', w.id)
+      }
+    }
+  }
+
   const handleDetenerTodos = () => {
     for (const w of workers) {
       if (w.estado !== 'detenido') {
@@ -166,6 +174,7 @@ export default function Workers() {
         </div>
         <div className="flex items-center gap-2">
           <button className="btn-primary flex items-center gap-2 text-sm" onClick={handleIniciarTodos}><Play size={14} /> Iniciar todos</button>
+          <button className="btn-primary flex items-center gap-2 text-sm" onClick={handlePausarTodos}><Pause size={14} /> Pausar todos</button>
           <button className="btn-primary flex items-center gap-2 text-sm" onClick={handleDetenerTodos}><Square size={14} /> Detener todos</button>
           <button onClick={loadWorkers} className="btn-primary p-2"><RefreshCw size={16} /></button>
         </div>

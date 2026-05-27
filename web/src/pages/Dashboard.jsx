@@ -29,7 +29,7 @@ export default function Dashboard() {
       let desde = 0
       let hayMas = true
       while (hayMas) {
-        const { data } = await supabase.from(TABLA_CLIENTES).select('dni, created_at, atributos_dinamicos').range(desde, desde + PAGE_SIZE - 1)
+        const { data } = await supabase.from(TABLA_CLIENTES).select('dni, created_at, atributos_dinamicos').order('created_at', { ascending: false }).range(desde, desde + PAGE_SIZE - 1)
         if (data && data.length > 0) {
           todosLosDatos = [...todosLosDatos, ...data]
           desde += PAGE_SIZE

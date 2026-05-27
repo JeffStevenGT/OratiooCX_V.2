@@ -101,16 +101,15 @@ function formatearFecha(iso) {
 // --- Construir arbol jerarquico ---
 function construirArbol(usuarios, session) {
   const esSupervisor = session.rol === 'supervisor'
-  const rolesStaff = ['desarrollador', 'jefe_area', 'it', 'back_office']
 
+  // Mostrar todos los usuarios, cada uno en su grupo
   let filtrados = usuarios
   if (esSupervisor) {
     filtrados = usuarios.filter(function (u) {
       return u.id === session.id || (u.equipo === session.equipo && u.supervisor_id === session.id)
     })
-  } else {
-    filtrados = usuarios.filter(function (u) { return !rolesStaff.includes(u.rol) })
   }
+  // Para no-supervisor: no filtrar, mostrar todos
 
   const paises = {}
 
@@ -118,21 +117,93 @@ function construirArbol(usuarios, session) {
     const usuariosPais = filtrados.filter(function (u) { return u.equipo === pais.clave })
     if (usuariosPais.length === 0) continue
 
-    const supervisores = usuariosPais.filter(function (u) { return u.supervisor_id === null })
+    // Si el usuario logueado es staff, mostrar supervisores y asesores
+    // Si es supervisor, mostrar su equipo
+    // Si es asesor, solo verse a si mismo
+
+    const supervisores = usuariosPais.filter(function (u) { return u.rol === 'supervisor' })
 
     const asesoresMap = {}
+    const asesSinSup = []
     for (const u of usuariosPais) {
-      if (u.supervisor_id !== null) {
-        if (!asesoresMap[u.supervisor_id]) asesoresMap[u.supervisor_id] = []
-        asesoresMap[u.supervisor_id].push(u)
+      if (u.rol === 'asesor') {
+        if (u.supervisor_id && supervisores.some(function (s) { return s.id === u.supervisor_id })) {
+          if (!asesoresMap[u.supervisor_id]) asesoresMap[u.supervisor_id] = []
+          asesoresMap[u.supervisor_id].push(u)
+        } else {
+          asesSinSup.push(u)
+        }
+      }
+    }
+
+    // Agrupar supervisores por grupo (equipo/ciudad)
+    const grupos = {}
+    for (const sup of supervisores) {
+      const g = sup.grupo || 'Sin equipo'
+      if (!grupos[g]) grupos[g] = []
+      grupos[g].push({ ...sup, asesores: asesoresMap[sup.id] || [] })
+    }
+    // Asesores sin supervisor al grupo 'Sin equipo'
+    if (asesSinSup.length > 0) {
+      if (!grupos['Sin equipo']) grupos['Sin equipo'] = []
+      grupos['Sin equipo'].push({
+        id: -1,
+        nombre: 'Asesores sin supervisor',
+        asesores: asesSinSup,
+        _sinSupervisor: true,
+      })
+    }
+
+    // Aplanar con separadores de grupo
+    const supervisoresConGrupo = []
+    for (const [grupo, sups] of Object.entries(grupos)) {
+      // Separador de grupo (equipo/ciudad)
+      supervisoresConGrupo.push({
+        _esGrupo: true,
+        _nombreGrupo: grupo,
+        _cantidad: sups.length,
+      })
+      for (const s of sups) {
+        supervisoresConGrupo.push(s)
       }
     }
 
     paises[pais.clave] = {
       info: pais,
-      supervisores: supervisores.map(function (sup) {
-        return { ...sup, asesores: asesoresMap[sup.id] || [] }
-      }),
+      supervisores: supervisoresConGrupo,
+    }
+  }
+
+  // Incluir usuarios sin equipo como 'Otros'
+  // Usuarios sin equipo que no estén ya en algun pais
+  const yaEnPais = new Set()
+  for (const p of Object.values(paises)) {
+    for (const sup of p.supervisores) {
+      yaEnPais.add(sup.id)
+      if (sup.asesores) sup.asesores.forEach(a => yaEnPais.add(a.id))
+    }
+  }
+  const sinEquipo = filtrados.filter(function (u) {
+    return !yaEnPais.has(u.id) && (!u.equipo || !PAISES.some(p => p.clave === u.equipo))
+  })
+  
+  // Agrupar sinEquipo bajo el primer pais disponible, o crear uno nuevo
+  let paisDestino = Object.keys(paises)[0] || PAISES[0]?.clave
+  if (sinEquipo.length > 0 && paisDestino) {
+    if (!paises[paisDestino]) paises[paisDestino] = { info: PAISES.find(p => p.clave === paisDestino), supervisores: [] }
+    
+    const asesSinSup = sinEquipo.filter(function (u) { return u.rol === 'asesor' })
+    if (asesSinSup.length > 0) {
+      paises[paisDestino].supervisores.push({
+        id: -1,
+        nombre: 'Asesores sin supervisor',
+        asesores: asesSinSup,
+        _sinSupervisor: true,
+      })
+    }
+    const supsSinEquipo = sinEquipo.filter(function (u) { return u.rol === 'supervisor' })
+    for (const sup of supsSinEquipo) {
+      paises[paisDestino].supervisores.push({ ...sup, asesores: [] })
     }
   }
 
@@ -142,7 +213,8 @@ function construirArbol(usuarios, session) {
 // --- Construir lista de staff ---
 function construirStaff(usuarios, session) {
   const rolesStaff = ['desarrollador', 'jefe_area', 'it', 'back_office']
-  if (session.rol === 'supervisor' || session.rol === 'asesor') {
+  // Mostrar staff a todos los roles excepto asesores
+  if (session.rol === 'asesor') {
     return []
   }
   return usuarios.filter(function (u) { return rolesStaff.includes(u.rol) })
@@ -163,7 +235,6 @@ export default function Usuarios() {
   const [supervisoresExpandidos, setSupervisoresExpandidos] = useState({})
   const [searchUser, setSearchUser] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  const [equipos, setEquipos] = useState([])
   const [proxyModal, setProxyModal] = useState({ open: false, user: null, value: '' })
   const PAGE_SIZE = 10
 
@@ -179,9 +250,7 @@ export default function Usuarios() {
       setPaisesExpandidos(exp)
       setLoading(false)
     })
-    supabase.from('equipos').select('*').then(({ data }) => {
-      if (data) setEquipos(data)
-    })
+
   }, [])
 
   const refresh = function () {
@@ -278,14 +347,13 @@ export default function Usuarios() {
   // Abrir modal crear
   const openCreate = function () {
     setEditingId(null)
-    const supEquipo = session.equipo || 'Peru'
     setForm({
       usuario: '',
       password: '',
       nombre: '',
       email: '',
       rol: session.rol === 'supervisor' ? 'asesor' : 'asesor',
-      equipo: supEquipo,
+      equipo: 'Peru',  // Default Peru
       grupo: '',
       supervisor_id: session.rol === 'supervisor' ? session.id : '',
     })
@@ -454,7 +522,7 @@ export default function Usuarios() {
     ? staffUsuarios.filter(function (u) { return usuarioCoincide(u, searchUser) })
     : staffUsuarios
 
-  const hayOperativos = Object.keys(arbolFiltrado).length > 0
+  const hayOperativos = Object.values(arbolFiltrado).some(function (pais) { return pais.supervisores.length > 0 })
   const noHayDatos = staffFiltrados.length === 0 && !hayOperativos
 
   return (
@@ -618,9 +686,9 @@ export default function Usuarios() {
                     {pais.info.label}
                   </span>
                   <span className="text-xs text-[#7c757c] bg-[#f0ecf0] rounded-full px-2.5 py-1">
-                    {pais.supervisores.length}
+                    {pais.supervisores.filter(function (s) { return !s._esGrupo }).length}
                     {' '}
-                    {pais.supervisores.length === 1 ? 'responsable' : 'responsables'}
+                    {pais.supervisores.filter(function (s) { return !s._esGrupo }).length === 1 ? 'responsable' : 'responsables'}
                   </span>
                   {estaExpandidoPais ? (
                     <ChevronDown size={18} className="text-[#7c757c]" />
@@ -633,6 +701,19 @@ export default function Usuarios() {
                 {estaExpandidoPais && (
                   <div className="bg-white">
                     {pais.supervisores.map(function (sup) {
+                      // Separador de grupo (equipo/ciudad)
+                      if (sup._esGrupo) {
+                        return (
+                          <div key={'g-' + sup._nombreGrupo} className="px-5 py-2 bg-[#f5ebf3]/40 border-b border-[#f0ecf0]">
+                            <span className="text-xs font-semibold text-[#7c757c] uppercase tracking-wider">
+                              {'📋 ' + sup._nombreGrupo}
+                            </span>
+                            <span className="text-xs text-[#7c757c] ml-2">
+                              {sup._cantidad} responsable{sup._cantidad !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                        )
+                      }
                       const estaExpandidoSup = supervisoresExpandidos[sup.id]
                       const tieneAsesores = sup.asesores && sup.asesores.length > 0
                       const rolColor = ROL_COLORS[sup.rol] || 'bg-gray-100 text-gray-600'
@@ -962,10 +1043,10 @@ export default function Usuarios() {
                 />
               </div>
 
-              {myRol !== 'supervisor' && (
+              { /* Equipo / Pa\u00eds */ }
               <div>
                 <label className="block text-xs text-[#7c757c] font-medium mb-1">
-                  {'Equipo - Pa\u00eds '}
+                  {'Pa\u00eds '}
                   <span className="text-red-400">*</span>
                 </label>
                 <select
@@ -975,32 +1056,28 @@ export default function Usuarios() {
                   }}
                   className="input-field text-sm"
                 >
-                  {equipos.length > 0
-                    ? equipos
-                        .filter(function (eq) {
-                          if (myRol === 'supervisor') return eq.nombre === session.equipo
-                          return true
-                        })
-                        .map(function (eq) {
-                          return (
-                            <option key={eq.id} value={eq.nombre}>
-                              {eq.pais === 'PE' ? '\ud83c\uddf5\ud83c\uddea' : '\ud83c\uddea\ud83c\uddf8'} {eq.nombre}
-                            </option>
-                          )
-                        })
-                    : PAISES
-                        .filter(function (p) {
-                          if (myRol === 'supervisor') return p.clave === session.equipo
-                          return true
-                        })
-                        .map(function (p) {
-                          return (
-                            <option key={p.clave} value={p.clave}>
-                              {p.bandera} {p.label}
-                            </option>
-                          )
-                        })}
+                  {PAISES.map(function (p) {
+                    return (
+                      <option key={p.clave} value={p.clave}>
+                        {p.bandera} {p.label}
+                      </option>
+                    )
+                  })}
                 </select>
+              </div>
+
+              { /* Grupo / Ciudad */ }
+              <div>
+                <label className="block text-xs text-[#7c757c] font-medium mb-1">
+                  {'Grupo / Ciudad'}
+                </label>
+                <input
+                  type="text"
+                  value={form.grupo}
+                  onChange={function (e) { setForm({ ...form, grupo: e.target.value }) }}
+                  className="input-field text-sm"
+                  placeholder="ej: Trujillo, Lima, Madrid"
+                />
               </div>
               )}
 
@@ -1139,7 +1216,7 @@ export default function Usuarios() {
                   const val = proxyModal.value.trim()
                   await supabase.from('usuarios').update({ proxy_asignado: val || null }).eq('id', proxyModal.user.id)
                   setProxyModal({ open: false, user: null, value: '' })
-                  cargarUsuarios()
+                  refresh()
                 }}
                 className="flex-1 bg-[#1495e0] hover:bg-[#0f7cc0] text-white rounded-lg py-2.5 text-sm font-medium transition-colors"
               >

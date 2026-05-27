@@ -274,21 +274,49 @@ export default function Sidebar({ onLogout }) {
           )}
       </nav>
 
-      {/* Abrir Orange - solo visible para desarrollador */}
-      {userRol === 'desarrollador' && (
+      {/* Abrir Orange via agente */}
+      {ABRIR_ORANGE_PERMS[userRol] && (
         <div className="p-2 border-t border-[#5d1a7a]">
-          <a
-            href="https://pangea.orange.es/"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={async () => {
+              try {
+                const ses = JSON.parse(localStorage.getItem('oratioo_session') || '{}')
+                // Buscar la primera máquina activa
+                const { data: maquinas } = await supabase.from('maquinas').select('nombre').eq('estado', 'conectado').limit(1)
+                const destino = maquinas && maquinas.length > 0 ? maquinas[0].nombre : null
+                if (!destino) {
+                  alert('No hay máquinas activas. Inicia el agente primero.')
+                  return
+                }
+                // Obtener proxy asignado al asesor
+                let proxyAsignado = ''
+                if (ses.email) {
+                  const { data: userData } = await supabase.from('usuarios').select('proxy_asignado').eq('email', ses.email).single()
+                  if (!userData?.proxy_asignado) {
+                    alert('No tienes un proxy asignado. Ve a Usuarios y asigna un proxy primero.')
+                    return
+                  }
+                  proxyAsignado = userData.proxy_asignado
+                }
+                await supabase.from('comandos_bot').insert({
+                  comando: 'abrir_navegador',
+                  maquina_destino: destino,
+                  parametros: { asesor_id: ses.id || '0', proxy_asignado: proxyAsignado },
+                  estado: 'pendiente',
+                })
+                alert('Comando enviado a ' + destino + '. El bot abrirá Orange con tu proxy asignado.')
+              } catch (e) {
+                alert('Error: ' + e.message)
+              }
+            }}
             className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-all duration-200 text-emerald-400 hover:text-white hover:bg-emerald-600"
-            title="Abrir Orange"
+            title="Abrir Orange desde el bot"
           >
             <Globe size={18} className="shrink-0" />
             {!collapsed && (
               <span className="text-sm font-medium">Abrir Orange</span>
             )}
-          </a>
+          </button>
         </div>
       )}
 

@@ -7,3 +7,5 @@ __pycache__/
 bot/proxies.txt
 bot/numeros.txt
 bot/venv/
+
+logs/
