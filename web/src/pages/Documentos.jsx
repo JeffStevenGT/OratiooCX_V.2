@@ -55,8 +55,6 @@ export default function Documentos() {
   const [maquinasDisponibles, setMaquinasDisponibles] = useState([])
   const [selectedMaquinas, setSelectedMaquinas] = useState({})
   const [workersConfig, setWorkersConfig] = useState({})
-  const [workersActivos, setWorkersActivos] = useState(0)
-  const [maquinasActivas, setMaquinasActivas] = useState(0)
 
   function hoyLocal() {
     const d = new Date()
@@ -96,16 +94,6 @@ export default function Documentos() {
       if (!m.ultimo_heartbeat) return false
       return (ahora - new Date(m.ultimo_heartbeat).getTime()) < 25000
     })
-    // Contar workers activos
-    let totalWorkers = 0
-    for (const m of activas) {
-      const info = m.workers_info
-      if (Array.isArray(info)) {
-        totalWorkers += info.filter(w => w.estado === 'activo' || w.dni_actual).length
-      }
-    }
-    setWorkersActivos(totalWorkers)
-    setMaquinasActivas(activas.length)
     setMaquinasDisponibles(activas)
     // Seleccionar todas por defecto
     const sel = {}
@@ -328,32 +316,6 @@ export default function Documentos() {
     finally { setDeletingId(null) }
   }
 
-  // Pausar worker individual
-  const togglePauseWorker = async (maquinaNombre, workerId, currentlyActive) => {
-    try {
-      const { data: maquinas } = await supabase.from('maquinas').select('workers_info').eq('nombre', maquinaNombre).limit(1)
-      if (!maquinas || !maquinas[0]) return
-      let info = maquinas[0].workers_info || []
-      if (typeof info === 'string') info = JSON.parse(info)
-      info = info.map(w => {
-        if (w.id === workerId) {
-          return { ...w, estado: currentlyActive ? 'pausado' : 'activo' }
-        }
-        return w
-      })
-      await supabase.from('maquinas').update({ workers_info: info }).eq('nombre', maquinaNombre)
-    } catch (e) { console.error(e) }
-  }
-
-  // Detener todos los workers de una máquina
-  const detenerMaquina = async (maquinaNombre) => {
-    await supabase.from('comandos_bot').insert({
-      maquina_destino: maquinaNombre,
-      comando: 'detener',
-      estado: 'pendiente',
-    })
-  }
-
   const formatSize = (bytes) => {
     if (bytes < 1024) return bytes + ' B'
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
@@ -371,62 +333,28 @@ export default function Documentos() {
 
       <BotStatus />
 
-      {/* Panel de máquinas y workers */}
+      {/* Selector de máquinas para iniciar análisis */}
       {maquinasDisponibles.length > 0 && (
-        <div className="p-3 bg-oratioo-light/30 rounded-lg border border-oratioo-border">
-          <div className="flex items-center gap-4 mb-2">
-            <div className="flex items-center gap-1.5 text-xs">
-              <div className={`h-2 w-2 rounded-full ${maquinasActivas > 0 ? 'bg-emerald-500' : 'bg-gray-300'}`}></div>
-              <span className="text-oratioo-dark font-medium">{maquinasActivas}</span>
-              <span className="text-oratioo-gray">máquina(s) activa(s)</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-xs">
-              <Loader2 size={12} className={`text-oratioo-purple ${workersActivos > 0 ? 'animate-spin' : ''}`} />
-              <span className="text-oratioo-dark font-medium">{workersActivos}</span>
-              <span className="text-oratioo-gray">worker(s) activos</span>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            {maquinasDisponibles.map(m => (
-              <div key={m.nombre} className="border border-oratioo-border rounded-lg p-2 bg-white min-w-[200px]">
-                <label className="flex items-center gap-2 text-xs cursor-pointer mb-1">
-                  <input type="checkbox"
-                    checked={selectedMaquinas[m.nombre] || false}
-                    onChange={(e) => setSelectedMaquinas(prev => ({ ...prev, [m.nombre]: e.target.checked }))}
-                    className="rounded border-oratioo-border" />
-                  <span className="font-medium">{m.nombre}</span>
-                  <span className="text-[#7c757c]">Workers:</span>
-                  <input type="number" min="1" max="10"
-                    value={workersConfig[m.nombre] || 1}
-                    onChange={(e) => setWorkersConfig(prev => ({ ...prev, [m.nombre]: parseInt(e.target.value) || 1 }))}
-                    className="w-14 border border-oratioo-border rounded px-2 py-0.5 text-xs text-center" />
-                </label>
-                {m.workers_info && Array.isArray(m.workers_info) && m.workers_info.filter(w => w.estado === 'activo' || w.dni_actual || w.estado === 'pausado').map(w => (
-                  <div key={w.id} className="flex items-center gap-2 text-[10px] text-[#7c757c] ml-6 mt-0.5">
-                    {w.estado === 'pausado' ? (
-                      <div className="h-2 w-2 rounded-full bg-amber-400"></div>
-                    ) : (
-                      <Loader2 size={8} className="animate-spin text-oratioo-purple" />
-                    )}
-                    <span>W{w.id}</span>
-                    <span className="font-mono">{w.proxy_ip || 'local'}</span>
-                    {w.dni_actual && <span className="truncate max-w-[80px]">{w.dni_actual}</span>}
-                    <button onClick={() => togglePauseWorker(m.nombre, w.id, w.estado !== 'pausado')}
-                      className="p-0.5 rounded hover:bg-oratioo-border transition-colors"
-                      title={w.estado === 'pausado' ? 'Reanudar' : 'Pausar'}>
-                      {w.estado === 'pausado' ? '▶' : '⏸'}
-                    </button>
-                  </div>
-                ))}
-                <button onClick={() => detenerMaquina(m.nombre)}
-                  className="ml-6 mt-1 text-[10px] text-red-500 hover:text-red-700 flex items-center gap-1">
-                  ⏹ Detener todos
-                </button>
-              </div>
-            ))}
-          </div>
+        <div className="flex flex-wrap items-center gap-3 p-2 bg-oratioo-light/30 rounded-lg border border-oratioo-border">
+          <span className="text-[10px] font-semibold text-oratioo-dark uppercase tracking-wider">Analizar en:</span>
+          {maquinasDisponibles.map(m => (
+            <label key={m.nombre} className="flex items-center gap-1.5 text-xs cursor-pointer">
+              <input type="checkbox"
+                checked={selectedMaquinas[m.nombre] || false}
+                onChange={(e) => setSelectedMaquinas(prev => ({ ...prev, [m.nombre]: e.target.checked }))}
+                className="rounded border-oratioo-border" />
+              <span className="font-medium">{m.nombre}</span>
+              <input type="number" min="1" max="10"
+                value={workersConfig[m.nombre] || 1}
+                onChange={(e) => setWorkersConfig(prev => ({ ...prev, [m.nombre]: parseInt(e.target.value) || 1 }))}
+                className="w-10 border border-oratioo-border rounded px-1 py-0.5 text-xs text-center"
+                title="Workers" />
+            </label>
+          ))}
         </div>
       )}
+
+
 
       <div {...getRootProps()} className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all ${
         isDragActive ? 'border-oratioo-purple bg-purple-50' : 'border-oratioo-border hover:border-oratioo-purple bg-white'
