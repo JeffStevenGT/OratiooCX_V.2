@@ -58,46 +58,78 @@ export default function Dashboard() {
       const noClientes = todosLosDatos.filter(c => c.atributos_dinamicos?.estado === 'no_cliente')
       const todosProcesados = todosLosDatos
 
-      // Aplicar filtro de fecha solo a completados (stats de bot)
-      let clientes = completados
+      // Aplicar filtro de fecha a stats (bot) — afecta completados + noClientes
       if (fechaCorte) {
-        clientes = clientes.filter(c => {
+        const fCorte = fechaCorte
+        // NoClientes también se filtran por fecha
+        const noClientesFiltrados = noClientes.filter(c => c.created_at && new Date(c.created_at) >= fCorte)
+        // Completados filtrados
+        const completadosFiltrados = completados.filter(c => {
           const f = c.atributos_dinamicos?.pipeline?.ultimo_cambio || c.created_at
-          return f && new Date(f) >= fechaCorte
+          return f && new Date(f) >= fCorte
         })
+        
+        const total = completadosFiltrados.length + noClientesFiltrados.length
+        const noCliente = noClientesFiltrados.length
+
+        const VARIANTES_MIXTO = [
+          'Renove mixto al mejor precio con máximo descuento',
+          'Renove mixto al mejor precio con descuento',
+          'Renove mixto al mejor precio',
+          'Renove mixto',
+        ]
+        const cima = completadosFiltrados.filter(c => c.atributos_dinamicos?.cima === 'SI').length
+        const renoveMixto = completadosFiltrados.filter(c => {
+          const v = c.atributos_dinamicos?.renove_mixto_variante
+          return v && VARIANTES_MIXTO.includes(v)
+        }).length
+        const maxDescuento = completadosFiltrados.filter(c => c.atributos_dinamicos?.renove_mixto_variante === 'Renove mixto al mejor precio con máximo descuento').length
+        const conDescuento = completadosFiltrados.filter(c => c.atributos_dinamicos?.renove_mixto_variante === 'Renove mixto al mejor precio con descuento').length
+        const mejorPrecio = completadosFiltrados.filter(c => c.atributos_dinamicos?.renove_mixto_variante === 'Renove mixto al mejor precio').length
+        const renoveBasico = completadosFiltrados.filter(c => c.atributos_dinamicos?.renove_mixto_variante === 'Renove mixto').length
+        const multidispositivo = completadosFiltrados.filter(c => c.atributos_dinamicos?.renove_mixto_variante === 'Renove Multidispositivo').length
+        const otros = completadosFiltrados.filter(c => {
+          const v = c.atributos_dinamicos?.renove_mixto_variante
+          return v && v !== 'N/A' && !VARIANTES_MIXTO.includes(v) && v !== 'Renove Multidispositivo'
+        }).length
+        const cimaRenove = completadosFiltrados.filter(c => c.atributos_dinamicos?.cima === 'SI' && (
+          c.atributos_dinamicos?.renove_mixto_variante && VARIANTES_MIXTO.includes(c.atributos_dinamicos?.renove_mixto_variante)
+        )).length
+        const tasaExtraccion = total > 0 ? Math.round((cimaRenove / total) * 100) : 0
+
+        setStats({ total, cima, renoveMixto, cimaRenove, tasaExtraccion, maxDescuento, conDescuento, mejorPrecio, renoveBasico, multidispositivo, otros, noCliente })
+      } else {
+        // Sin filtro de fecha (todo)
+        const total = completados.length + noClientes.length
+        const noCliente = noClientes.length
+
+        const VARIANTES_MIXTO = [
+          'Renove mixto al mejor precio con máximo descuento',
+          'Renove mixto al mejor precio con descuento',
+          'Renove mixto al mejor precio',
+          'Renove mixto',
+        ]
+        const cima = completados.filter(c => c.atributos_dinamicos?.cima === 'SI').length
+        const renoveMixto = completados.filter(c => {
+          const v = c.atributos_dinamicos?.renove_mixto_variante
+          return v && VARIANTES_MIXTO.includes(v)
+        }).length
+        const maxDescuento = completados.filter(c => c.atributos_dinamicos?.renove_mixto_variante === 'Renove mixto al mejor precio con máximo descuento').length
+        const conDescuento = completados.filter(c => c.atributos_dinamicos?.renove_mixto_variante === 'Renove mixto al mejor precio con descuento').length
+        const mejorPrecio = completados.filter(c => c.atributos_dinamicos?.renove_mixto_variante === 'Renove mixto al mejor precio').length
+        const renoveBasico = completados.filter(c => c.atributos_dinamicos?.renove_mixto_variante === 'Renove mixto').length
+        const multidispositivo = completados.filter(c => c.atributos_dinamicos?.renove_mixto_variante === 'Renove Multidispositivo').length
+        const otros = completados.filter(c => {
+          const v = c.atributos_dinamicos?.renove_mixto_variante
+          return v && v !== 'N/A' && !VARIANTES_MIXTO.includes(v) && v !== 'Renove Multidispositivo'
+        }).length
+        const cimaRenove = completados.filter(c => c.atributos_dinamicos?.cima === 'SI' && (
+          c.atributos_dinamicos?.renove_mixto_variante && VARIANTES_MIXTO.includes(c.atributos_dinamicos?.renove_mixto_variante)
+        )).length
+        const tasaExtraccion = total > 0 ? Math.round((cimaRenove / total) * 100) : 0
+
+        setStats({ total, cima, renoveMixto, cimaRenove, tasaExtraccion, maxDescuento, conDescuento, mejorPrecio, renoveBasico, multidispositivo, otros, noCliente })
       }
-
-      const total = completados.length + noClientes.length
-      const noCliente = noClientes.length
-      const cima = completados.filter(c => c.atributos_dinamicos?.cima === 'SI').length
-
-      const VARIANTES_MIXTO = [
-        'Renove mixto al mejor precio con máximo descuento',
-        'Renove mixto al mejor precio con descuento',
-        'Renove mixto al mejor precio',
-        'Renove mixto',
-      ]
-      const renoveMixto = completados.filter(c => {
-        const v = c.atributos_dinamicos?.renove_mixto_variante
-        return v && VARIANTES_MIXTO.includes(v)
-      }).length
-
-      const maxDescuento = completados.filter(c => c.atributos_dinamicos?.renove_mixto_variante === 'Renove mixto al mejor precio con máximo descuento').length
-      const conDescuento = completados.filter(c => c.atributos_dinamicos?.renove_mixto_variante === 'Renove mixto al mejor precio con descuento').length
-      const mejorPrecio = completados.filter(c => c.atributos_dinamicos?.renove_mixto_variante === 'Renove mixto al mejor precio').length
-      const renoveBasico = completados.filter(c => c.atributos_dinamicos?.renove_mixto_variante === 'Renove mixto').length
-      const multidispositivo = completados.filter(c => c.atributos_dinamicos?.renove_mixto_variante === 'Renove Multidispositivo').length
-      const otros = completados.filter(c => {
-        const v = c.atributos_dinamicos?.renove_mixto_variante
-        return v && v !== 'N/A' && !VARIANTES_MIXTO.includes(v) && v !== 'Renove Multidispositivo'
-      }).length
-
-      const cimaRenove = completados.filter(c => c.atributos_dinamicos?.cima === 'SI' && (
-        c.atributos_dinamicos?.renove_mixto_variante && VARIANTES_MIXTO.includes(c.atributos_dinamicos?.renove_mixto_variante)
-      )).length
-      const tasaExtraccion = total > 0 ? Math.round((cimaRenove / total) * 100) : 0
-
-      setStats({ total, cima, renoveMixto, cimaRenove, tasaExtraccion, maxDescuento, conDescuento, mejorPrecio, renoveBasico, multidispositivo, otros, noCliente })
 
             // Chart: últimos 7 días en hora local
       const last7 = []
