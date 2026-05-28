@@ -112,6 +112,18 @@ def actualizar_progreso_documento(dni: str):
         pass
 
 
+def _extraer_ip_proxy():
+    """Extrae la IP del proxy desde PROXY_SERVER."""
+    server = os.getenv("PROXY_SERVER", "")
+    if not server:
+        return "local"
+    # Formato: http://ip:puerto
+    try:
+        return server.split("//")[1].split(":")[0]
+    except:
+        return server
+
+
 def reportar_actividad(dni_actual: str = ""):
     """Reporta el DNI que está procesando este worker en la tabla maquinas."""
     try:
@@ -122,14 +134,16 @@ def reportar_actividad(dni_actual: str = ""):
             if isinstance(info, str):
                 try: info = json.loads(info)
                 except: info = []
+            proxy_ip = _extraer_ip_proxy()
             encontrado = False
             for i, w in enumerate(info):
                 if isinstance(w, dict) and str(w.get("id")) == str(WORKER_ID):
                     info[i]["dni_actual"] = dni_actual
+                    info[i]["proxy_ip"] = proxy_ip
                     encontrado = True
                     break
             if not encontrado and dni_actual:
-                info.append({"id": WORKER_ID, "dni_actual": dni_actual, "estado": "activo"})
+                info.append({"id": WORKER_ID, "dni_actual": dni_actual, "estado": "activo", "proxy_ip": proxy_ip})
             _api("PATCH", f"/maquinas?id=eq.{m['id']}", {"workers_info": info})
     except Exception:
         pass

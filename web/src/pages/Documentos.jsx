@@ -492,18 +492,29 @@ export default function Documentos() {
             <p className="text-xs font-semibold text-oratioo-dark mb-2">🖥️ Máquinas disponibles</p>
             <div className="flex flex-wrap gap-3">
               {maquinasDisponibles.map(m => (
-                <label key={m.nombre} className="flex items-center gap-2 text-xs cursor-pointer">
-                  <input type="checkbox"
-                    checked={selectedMaquinas[m.nombre] || false}
-                    onChange={(e) => setSelectedMaquinas(prev => ({ ...prev, [m.nombre]: e.target.checked }))}
-                    className="rounded border-oratioo-border" />
-                  <span className="font-medium">{m.nombre}</span>
-                  <span className="text-[#7c757c]">Workers:</span>
-                  <input type="number" min="1" max="10"
-                    value={workersConfig[m.nombre] || 1}
-                    onChange={(e) => setWorkersConfig(prev => ({ ...prev, [m.nombre]: parseInt(e.target.value) || 1 }))}
-                    className="w-14 border border-oratioo-border rounded px-2 py-0.5 text-xs text-center" />
-                </label>
+                <div key={m.nombre} className="border border-oratioo-border rounded-lg p-2 bg-white min-w-[200px]">
+                  <label className="flex items-center gap-2 text-xs cursor-pointer mb-1">
+                    <input type="checkbox"
+                      checked={selectedMaquinas[m.nombre] || false}
+                      onChange={(e) => setSelectedMaquinas(prev => ({ ...prev, [m.nombre]: e.target.checked }))}
+                      className="rounded border-oratioo-border" />
+                    <span className="font-medium">{m.nombre}</span>
+                    <span className="text-[#7c757c]">Workers:</span>
+                    <input type="number" min="1" max="10"
+                      value={workersConfig[m.nombre] || 1}
+                      onChange={(e) => setWorkersConfig(prev => ({ ...prev, [m.nombre]: parseInt(e.target.value) || 1 }))}
+                      className="w-14 border border-oratioo-border rounded px-2 py-0.5 text-xs text-center" />
+                  </label>
+                  {/* Workers activos con IP */}
+                  {m.workers_info && Array.isArray(m.workers_info) && m.workers_info.filter(w => w.estado === 'activo' || w.dni_actual).map(w => (
+                    <div key={w.id} className="flex items-center gap-2 text-[10px] text-[#7c757c] ml-6 mt-0.5">
+                      <Loader2 size={8} className="animate-spin text-oratioo-purple" />
+                      <span>W{w.id}</span>
+                      <span className="font-mono">{w.proxy_ip || 'local'}</span>
+                      {w.dni_actual && <span className="truncate max-w-[80px]">{w.dni_actual}</span>}
+                    </div>
+                  ))}
+                </div>
               ))}
             </div>
           </div>
