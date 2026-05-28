@@ -285,6 +285,7 @@ export default function Clientes() {
           case 'renove': aVal = a._renove_mixto ? 'SI' : 'NO'; bVal = b._renove_mixto ? 'SI' : 'NO'; break
           case 'estado': aVal = 'completado'; bVal = 'completado'; break
           case 'fecha': aVal = a.fecha_analisis || ''; bVal = b.fecha_analisis || ''; break
+          case 'hora': aVal = a.atributos_dinamicos?.fecha_hora || ''; bVal = b.atributos_dinamicos?.fecha_hora || ''; break
           default: return 0
         }
         if (aVal < bVal) return sortConfig.dir === 'asc' ? -1 : 1
@@ -553,8 +554,8 @@ export default function Clientes() {
                 <SortHeader label="Línea Principal" sortKey="linea" />
                 <SortHeader label="Paquete" sortKey="paquete" />
                 <SortHeader label="Tipo Renove" sortKey="renove" />
-                <SortHeader label="Hora" sortKey="hora" />
                 <SortHeader label="Fecha" sortKey="fecha" />
+                <SortHeader label="Hora" sortKey="hora" />
               </tr>
             </thead>
             <tbody>
