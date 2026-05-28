@@ -281,25 +281,21 @@ def detener_coordinador(cmd):
 
 # ── Loop principal ────────────────────────────────
 def _resetear_dnis_colgados():
-    """Resetea DNIs colgados (en_progreso por crash, error por fallo) a pendiente."""
+    """Resetea DNIs en 'error' a pendiente.
+    Los en_progreso los maneja el watchdog (solo si el worker no reporta).
+    """
     try:
-        total_reseteados = 0
-        for estado_origen in ['en_progreso', 'error']:
-            rows = _api("GET", f"/lineas?select=id,atributos_dinamicos&atributos_dinamicos->>estado=eq.{estado_origen}&limit=200")
-            if rows:
-                for row in rows:
-                    ad = row.get("atributos_dinamicos", {})
-                    if isinstance(ad, str):
-                        import json as _json
-                        try: ad = _json.loads(ad)
-                        except: ad = {}
-                    ad["estado"] = "pendiente"
-                    _api("PATCH", f"/lineas?id=eq.{row['id']}&atributos_dinamicos->>estado=eq.{estado_origen}",
-                         {"atributos_dinamicos": ad})
-                total_reseteados += len(rows)
-                print(f"[Agente] ♻️  {len(rows)} DNIs en '{estado_origen}' reseteados a pendiente")
-        if total_reseteados > 0:
-            print(f"[Agente] ♻️  Total: {total_reseteados} DNIs recuperados")
+        rows = _api("GET", "/lineas?select=id,atributos_dinamicos&atributos_dinamicos->>estado=eq.error&limit=200")
+        if rows:
+            for row in rows:
+                ad = row.get("atributos_dinamicos", {})
+                if isinstance(ad, str):
+                    import json as _j
+                    try: ad = _j.loads(ad)
+                    except: ad = {}
+                ad["estado"] = "pendiente"
+                _api("PATCH", f"/lineas?id=eq.{row['id']}", {"atributos_dinamicos": ad})
+            print(f"[Agente] ♻️  {len(rows)} DNIs en 'error' reseteados a pendiente")
     except Exception:
         pass
 
