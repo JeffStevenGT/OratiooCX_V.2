@@ -106,19 +106,18 @@ export default function Documentos() {
     }
     setSelectedMaquinas(sel)
     setWorkersConfig(wc)
-    // Verificar si hay workers procesando y en qué máquinas
+    // Verificar workers activos (deben reportar actividad, no solo en_progreso)
     try {
-      const { count } = await supabase.from('lineas').select('id', { count: 'exact', head: true })
-        .filter('atributos_dinamicos->>estado', 'eq', 'en_progreso')
-      setAnalisisEnCurso((count || 0) > 0)
-      // Detectar qué máquinas tienen workers activos
+      let workersReportando = false
       const trabajando = {}
       for (const m of activas) {
         const info = m.workers_info
-        if (Array.isArray(info) && info.some(w => w.estado === 'activo' || w.dni_actual)) {
+        if (Array.isArray(info) && info.some(w => (w.estado === 'activo' || w.dni_actual))) {
+          workersReportando = true
           trabajando[m.nombre] = true
         }
       }
+      setAnalisisEnCurso(workersReportando)
       setMaquinasTrabajando(trabajando)
     } catch {}
   }
