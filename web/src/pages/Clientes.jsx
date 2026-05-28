@@ -139,6 +139,7 @@ export default function Clientes() {
           pestanas: ad.pestanas,
           pipeline: ad.pipeline,
           estado: 'completado',
+          fecha_procesado: ad.fecha_procesado || '',
         }
       }
     }
