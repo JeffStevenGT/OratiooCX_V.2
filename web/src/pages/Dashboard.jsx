@@ -131,14 +131,18 @@ export default function Dashboard() {
         setStats({ total, cima, renoveMixto, cimaRenove, tasaExtraccion, maxDescuento, conDescuento, mejorPrecio, renoveBasico, multidispositivo, otros, noCliente })
       }
 
-            // Chart: últimos 7 días en hora local
+      // Chart: últimos 7 días — DNIs ANALIZADOS (fecha_procesado, no created_at)
+      const procesados = [...completados, ...noClientes]
       const last7 = []
       for (let i = 6; i >= 0; i--) {
         const d = new Date()
         d.setDate(d.getDate() - i)
         const dateStr = localDateStr(d)
         const dayLabel = d.toLocaleDateString('es', { weekday: 'short', day: 'numeric' })
-        const count = todosProcesados.filter(c => c.created_at && utcToLocalDate(c.created_at) === dateStr).length
+        const count = procesados.filter(c => {
+          const fp = c.atributos_dinamicos?.fecha_procesado
+          return fp === dateStr
+        }).length
         last7.push({ day: dayLabel, Procesados: count })
       }
       setChartData(last7)
