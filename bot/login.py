@@ -271,6 +271,12 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
             # ═══ DETECTAR ERROR "No se han podido recuperar campañas" ═══
             if _detectar_y_cerrar_toast(page):
                 print(f"  [Extracción] [FAIL] {numero}: error campañas — saltando al siguiente")
+                # Abrir Cambiar cliente para dejar modal listo
+                try:
+                    page.locator("button[title='Cambiar cliente']").first.click(force=True, timeout=5000)
+                    page.wait_for_timeout(1000)
+                except:
+                    pass
                 return [{
                     "DNI": numero,
                     "Nombre": "ERROR CAMPANAS",
@@ -286,6 +292,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     "es_principal": False,
                     "etiquetas": [],
                     "activo_desde": "N/A",
+                    "_modal_abierto": True,
                 }]
 
             print("  [Extracción] Cargando ficha de cliente...")
@@ -316,6 +323,12 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
             # ═══ CERRAR TOAST DE ERROR ("No se han podido recuperar campañas") Y SALTAR DNI ═══
             if _detectar_y_cerrar_toast(page):
                 print(f"  [Extracción] [FAIL] {numero}: error campañas — saltando al siguiente")
+                # Abrir Cambiar cliente para dejar modal listo
+                try:
+                    page.locator("button[title='Cambiar cliente']").first.click(force=True, timeout=5000)
+                    page.wait_for_timeout(1000)
+                except:
+                    pass
                 return [{
                     "DNI": numero,
                     "Nombre": "ERROR CAMPANAS",
@@ -331,6 +344,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     "es_principal": False,
                     "etiquetas": [],
                     "activo_desde": "N/A",
+                    "_modal_abierto": True,
                 }]
 
             # ── 3. BUCLE DE LÍNEAS CON PAGINACIÓN ─────
