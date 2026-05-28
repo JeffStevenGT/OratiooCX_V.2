@@ -181,6 +181,11 @@ export default function Clientes() {
       }
     }
 
+    // DEBUG: ver fecha_analisis de los primeros 5
+    if (result.length > 0 && dateFrom) {
+      console.log('[DEBUG] dateFrom:', dateFrom, 'primeros fecha_analisis:', result.slice(0,5).map(g => ({dni: g.dni, fa: g.fecha_analisis})))
+    }
+
     // ── Aplicar TODOS los filtros activos (AND) ──
     // CIMA (si ALGUNA linea tiene CIMA)
     if (cimaFilter === 'SI') {
@@ -245,7 +250,11 @@ export default function Clientes() {
       result = result.filter((g) => {
         const fa = g.fecha_analisis
         if (!fa) return false
-        return fa >= dateFrom
+        const match = fa >= dateFrom
+        if (!match && result.length < 10) {
+          console.log('[DEBUG] EXCLUIDO por fecha:', g.dni, 'fa:', fa, 'dateFrom:', dateFrom, 'fa>=dateFrom:', match)
+        }
+        return match
       })
     }
     if (dateTo) {
