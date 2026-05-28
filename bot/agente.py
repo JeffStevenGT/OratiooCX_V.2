@@ -281,21 +281,45 @@ def detener_coordinador(cmd):
 
 # ── Loop principal ────────────────────────────────
 def _resetear_dnis_colgados():
-    """Resetea DNIs en 'error' a pendiente.
-    Los en_progreso los maneja el watchdog (solo si el worker no reporta).
+    """Resetea DNIs colgados al arrancar:
+    - 'error' → pendiente
+    - 'en_progreso' cuyo worker_id ya no reporta actividad → pendiente
+    Nunca toca 'completado' ni 'no_cliente'.
     """
     try:
-        rows = _api("GET", "/lineas?select=id,atributos_dinamicos&atributos_dinamicos->>estado=eq.error&limit=200")
-        if rows:
-            for row in rows:
-                ad = row.get("atributos_dinamicos", {})
-                if isinstance(ad, str):
-                    import json as _j
-                    try: ad = _j.loads(ad)
-                    except: ad = {}
-                ad["estado"] = "pendiente"
-                _api("PATCH", f"/lineas?id=eq.{row['id']}", {"atributos_dinamicos": ad})
-            print(f"[Agente] ♻️  {len(rows)} DNIs en 'error' reseteados a pendiente")
+        # Obtener workers activos
+        maquinas = _api("GET", "/maquinas?select=workers_info&limit=10")
+        workers_activos = set()
+        for m in (maquinas or []):
+            info = m.get("workers_info", []) or []
+            if isinstance(info, str):
+                try: info = json.loads(info)
+                except: info = []
+            for w in info:
+                if isinstance(w, dict) and (w.get("dni_actual") or w.get("estado") == "activo"):
+                    workers_activos.add(w.get("id"))
+    except:
+        workers_activos = set()
+
+    try:
+        for estado_origen in ['error', 'en_progreso']:
+            rows = _api("GET", f"/lineas?select=id,atributos_dinamicos&atributos_dinamicos->>estado=eq.{estado_origen}&limit=200")
+            if rows:
+                resets = 0
+                for row in rows:
+                    ad = row.get("atributos_dinamicos", {})
+                    if isinstance(ad, str):
+                        import json as _j
+                        try: ad = _j.loads(ad)
+                        except: ad = {}
+                    # Si es en_progreso y su worker aún reporta, NO tocar
+                    if estado_origen == 'en_progreso' and ad.get("worker_id") in workers_activos:
+                        continue
+                    ad["estado"] = "pendiente"
+                    _api("PATCH", f"/lineas?id=eq.{row['id']}", {"atributos_dinamicos": ad})
+                    resets += 1
+                if resets > 0:
+                    print(f"[Agente] ♻️  {resets} DNIs '{estado_origen}' reseteados a pendiente")
     except Exception:
         pass
 
