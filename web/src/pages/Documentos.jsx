@@ -328,6 +328,32 @@ export default function Documentos() {
     finally { setDeletingId(null) }
   }
 
+  // Pausar worker individual
+  const togglePauseWorker = async (maquinaNombre, workerId, currentlyActive) => {
+    try {
+      const { data: maquinas } = await supabase.from('maquinas').select('workers_info').eq('nombre', maquinaNombre).limit(1)
+      if (!maquinas || !maquinas[0]) return
+      let info = maquinas[0].workers_info || []
+      if (typeof info === 'string') info = JSON.parse(info)
+      info = info.map(w => {
+        if (w.id === workerId) {
+          return { ...w, estado: currentlyActive ? 'pausado' : 'activo' }
+        }
+        return w
+      })
+      await supabase.from('maquinas').update({ workers_info: info }).eq('nombre', maquinaNombre)
+    } catch (e) { console.error(e) }
+  }
+
+  // Detener todos los workers de una máquina
+  const detenerMaquina = async (maquinaNombre) => {
+    await supabase.from('comandos_bot').insert({
+      maquina_destino: maquinaNombre,
+      comando: 'detener',
+      estado: 'pendiente',
+    })
+  }
+
   const formatSize = (bytes) => {
     if (bytes < 1024) return bytes + ' B'
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
@@ -505,15 +531,29 @@ export default function Documentos() {
                       onChange={(e) => setWorkersConfig(prev => ({ ...prev, [m.nombre]: parseInt(e.target.value) || 1 }))}
                       className="w-14 border border-oratioo-border rounded px-2 py-0.5 text-xs text-center" />
                   </label>
-                  {/* Workers activos con IP */}
-                  {m.workers_info && Array.isArray(m.workers_info) && m.workers_info.filter(w => w.estado === 'activo' || w.dni_actual).map(w => (
+                  {/* Workers activos con IP y controles */}
+                  {m.workers_info && Array.isArray(m.workers_info) && m.workers_info.filter(w => w.estado === 'activo' || w.dni_actual || w.estado === 'pausado').map(w => (
                     <div key={w.id} className="flex items-center gap-2 text-[10px] text-[#7c757c] ml-6 mt-0.5">
-                      <Loader2 size={8} className="animate-spin text-oratioo-purple" />
+                      {w.estado === 'pausado' ? (
+                        <div className="h-2 w-2 rounded-full bg-amber-400"></div>
+                      ) : (
+                        <Loader2 size={8} className="animate-spin text-oratioo-purple" />
+                      )}
                       <span>W{w.id}</span>
                       <span className="font-mono">{w.proxy_ip || 'local'}</span>
                       {w.dni_actual && <span className="truncate max-w-[80px]">{w.dni_actual}</span>}
+                      <button onClick={() => togglePauseWorker(m.nombre, w.id, w.estado !== 'pausado')}
+                        className="p-0.5 rounded hover:bg-oratioo-border transition-colors"
+                        title={w.estado === 'pausado' ? 'Reanudar' : 'Pausar'}>
+                        {w.estado === 'pausado' ? '▶' : '⏸'}
+                      </button>
                     </div>
                   ))}
+                  {/* Botón detener toda la máquina */}
+                  <button onClick={() => detenerMaquina(m.nombre)}
+                    className="ml-6 mt-1 text-[10px] text-red-500 hover:text-red-700 flex items-center gap-1">
+                    ⏹ Detener todos
+                  </button>
                 </div>
               ))}
             </div>
