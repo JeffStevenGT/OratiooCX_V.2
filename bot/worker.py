@@ -395,20 +395,39 @@ def main():
                     else:
                         errores += 1
                         modal_abierto = False
-                        # 🔄 Recrear página tras fallo
+                        # ⚡ Intentar abrir modal de búsqueda (más rápido que recargar página)
                         try:
-                            log(f"[RECOVERY] DNI {dni} falló. Recreando página...")
-                            page.close()
-                            page = context.new_page()
-                            page.goto(ORANGE_URL, timeout=30000)
-                            manejar_cookies_flexible(page)
-                            realizar_login(page)
-                            seleccionar_marca_orange(page)
-                            abrir_nuevo_acto_comercial(page)
-                            log("[RECOVERY] Página recreada correctamente")
+                            log(f"[NEXT] Abriendo modal para siguiente DNI...")
+                            # Cerrar posibles toasts
+                            try:
+                                toast = page.locator(".message-relevant.error .btn-close")
+                                if toast.count() > 0:
+                                    toast.first.click(force=True, timeout=2000)
+                                    page.wait_for_timeout(500)
+                            except:
+                                pass
+                            # Click en Cambiar cliente para abrir modal
+                            btn = page.locator("button[title='Cambiar cliente']")
+                            btn.wait_for(state="visible", timeout=8000)
+                            btn.click(force=True)
+                            page.wait_for_timeout(1000)
+                            log("[NEXT] Modal abierto, listo para siguiente DNI")
                             modal_abierto = False
-                        except Exception as recovery_err:
-                            log(f"[RECOVERY] Error al recrear página: {recovery_err}")
+                        except Exception:
+                            # Si falla, recargar página completa
+                            try:
+                                log(f"[RECOVERY] No se pudo abrir modal. Recreando página...")
+                                page.close()
+                                page = context.new_page()
+                                page.goto(ORANGE_URL, timeout=30000)
+                                manejar_cookies_flexible(page)
+                                realizar_login(page)
+                                seleccionar_marca_orange(page)
+                                abrir_nuevo_acto_comercial(page)
+                                log("[RECOVERY] Página recreada correctamente")
+                                modal_abierto = False
+                            except Exception as recovery_err:
+                                log(f"[RECOVERY] Error al recrear página: {recovery_err}")
 
                     # Verificar sesión cada 3 DNIs
                     if (procesados + errores) % 3 == 0:
