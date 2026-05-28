@@ -49,6 +49,12 @@ export default function Documentos() {
   const [analyzing, setAnalyzing] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
   const [agenteActivo, setAgenteActivo] = useState(false)
+  const [soloHoy, setSoloHoy] = useState(true)
+
+  function hoyLocal() {
+    const d = new Date()
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+  }
 
   const fetchHistory = async () => {
     setLoadingHistory(true)
@@ -368,6 +374,13 @@ export default function Documentos() {
             <Clock size={14} className="text-oratioo-gray" /> Historial de cargas
           </h3>
           <div className="flex items-center gap-2">
+            <button onClick={() => setSoloHoy(!soloHoy)}
+              className={`text-xs px-3 py-2 rounded-lg border transition-all flex items-center gap-1.5 ${
+                soloHoy ? 'bg-[#481163] text-white border-[#481163]' : 'bg-white text-oratioo-dark border-oratioo-border hover:bg-oratioo-light'
+              }`}
+              title={soloHoy ? 'Mostrar todos los días' : 'Mostrar solo hoy'}>
+              <Clock size={14} /> {soloHoy ? 'Solo hoy' : 'Ver todo'}
+            </button>
             <button onClick={fetchHistory} disabled={loadingHistory}
               className="text-xs bg-white border border-oratioo-border text-oratioo-dark px-3 py-2 rounded-lg hover:bg-oratioo-light transition-all flex items-center gap-1.5"
               title="Actualizar historial">
@@ -410,10 +423,12 @@ export default function Documentos() {
                 <tr><td colSpan={5} className="text-center py-8 text-oratioo-gray text-sm">Aún no hay cargas registradas</td></tr>
               ) : (
                 (() => {
+                  const hoy = hoyLocal()
                   // Agrupar por día
                   const grupos = {}
                   for (const h of uploaded) {
                     const dia = utcToLocalDate(h.created_at)
+                    if (soloHoy && dia !== hoy) continue
                     if (!grupos[dia]) grupos[dia] = { dia, docs: [], totalDnis: 0, completados: 0, analizando: 0, pendientes: 0 }
                     grupos[dia].docs.push(h)
                     grupos[dia].totalDnis += (h.total_dnis || 0)
