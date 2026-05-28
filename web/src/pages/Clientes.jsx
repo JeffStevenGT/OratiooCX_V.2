@@ -247,7 +247,7 @@ export default function Clientes() {
     }
 
     // ── Rango de fechas ──
-    console.log('[DEBUG] ANTES de filtro fecha:', result.length, 'registros')
+    console.log('[DEBUG] ANTES de filtro fecha:', result.length, 'registros, fecha_analisis:', result.slice(0,3).map(g => g.dni + '=' + g.fecha_analisis))
     if (dateFrom) {
       result = result.filter((g) => {
         const fa = g.fecha_analisis
