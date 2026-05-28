@@ -148,22 +148,25 @@ def abrir_nuevo_acto_comercial(page: Page):
 
 # ── Extracción de datos del cliente ────────────────
 
-def _detectar_y_cerrar_toast(page) -> bool:
-    """Detecta y cierra el toast 'No se han podido recuperar campañas' de Pangea.
-    Retorna True si lo encontró y cerró."""
+def _hay_toast_error(page) -> bool:
+    """Detecta si el toast 'No se han podido recuperar campañas' está visible.
+    NO lo cierra — solo detecta."""
     try:
         toast = page.locator(".message-relevant.error")
         if toast.count() == 0:
             return False
-        if not toast.first.is_visible(timeout=2000):
-            return False
-        print("  [Extracción] [WARN] Detectado toast 'No se han podido recuperar campañas'")
-        cerrar = page.locator(".message-relevant.error .btn-close").first
-        cerrar.click(force=True, timeout=3000)
-        page.wait_for_timeout(1000)
-        return True
+        return toast.first.is_visible(timeout=1000)
     except Exception:
         return False
+
+
+def _abrir_cambiar_cliente(page):
+    """Hace clic en Cambiar cliente para dejar el modal listo para el siguiente DNI."""
+    try:
+        page.locator("button[title='Cambiar cliente']").first.click(force=True, timeout=5000)
+        page.wait_for_timeout(1000)
+    except Exception:
+        pass
 
 
 def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
@@ -269,14 +272,9 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                 }]
 
             # ═══ DETECTAR ERROR "No se han podido recuperar campañas" ═══
-            if _detectar_y_cerrar_toast(page):
-                print(f"  [Extracción] [FAIL] {numero}: error campañas — saltando al siguiente")
-                # Abrir Cambiar cliente para dejar modal listo
-                try:
-                    page.locator("button[title='Cambiar cliente']").first.click(force=True, timeout=5000)
-                    page.wait_for_timeout(1000)
-                except:
-                    pass
+            if _hay_toast_error(page):
+                print(f"  [Extracción] [FAIL] {numero}: error campañas — Cambiar cliente y siguiente")
+                _abrir_cambiar_cliente(page)
                 return [{
                     "DNI": numero,
                     "Nombre": "ERROR CAMPANAS",
@@ -320,15 +318,10 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
             print(f"  [Extracción] Cliente: {nombre} | DNI: {dni} | Paquete: {paquete}")
             print(f"  [Extracción] Dirección: {direccion}")
 
-            # ═══ CERRAR TOAST DE ERROR ("No se han podido recuperar campañas") Y SALTAR DNI ═══
-            if _detectar_y_cerrar_toast(page):
-                print(f"  [Extracción] [FAIL] {numero}: error campañas — saltando al siguiente")
-                # Abrir Cambiar cliente para dejar modal listo
-                try:
-                    page.locator("button[title='Cambiar cliente']").first.click(force=True, timeout=5000)
-                    page.wait_for_timeout(1000)
-                except:
-                    pass
+            # ═══ TOAST ERROR ("No se han podido recuperar campañas") — SALTAR DNI ═══
+            if _hay_toast_error(page):
+                print(f"  [Extracción] [FAIL] {numero}: error campañas — Cambiar cliente y siguiente")
+                _abrir_cambiar_cliente(page)
                 return [{
                     "DNI": numero,
                     "Nombre": "ERROR CAMPANAS",
