@@ -56,6 +56,7 @@ export default function Documentos() {
   const [selectedMaquinas, setSelectedMaquinas] = useState({})
   const [workersConfig, setWorkersConfig] = useState({})
   const [analisisEnCurso, setAnalisisEnCurso] = useState(false)
+  const [maquinasTrabajando, setMaquinasTrabajando] = useState({}) // { nombre: true }
 
   function hoyLocal() {
     const d = new Date()
@@ -105,11 +106,20 @@ export default function Documentos() {
     }
     setSelectedMaquinas(sel)
     setWorkersConfig(wc)
-    // Verificar si hay workers procesando
+    // Verificar si hay workers procesando y en qué máquinas
     try {
       const { count } = await supabase.from('lineas').select('id', { count: 'exact', head: true })
         .filter('atributos_dinamicos->>estado', 'eq', 'en_progreso')
       setAnalisisEnCurso((count || 0) > 0)
+      // Detectar qué máquinas tienen workers activos
+      const trabajando = {}
+      for (const m of activas) {
+        const info = m.workers_info
+        if (Array.isArray(info) && info.some(w => w.estado === 'activo' || w.dni_actual)) {
+          trabajando[m.nombre] = true
+        }
+      }
+      setMaquinasTrabajando(trabajando)
     } catch {}
   }
   useEffect(() => { fetchMaquinas() }, [])
@@ -351,6 +361,9 @@ export default function Documentos() {
                 onChange={(e) => setSelectedMaquinas(prev => ({ ...prev, [m.nombre]: e.target.checked }))}
                 className="rounded border-oratioo-border" />
               <span className="font-medium">{m.nombre}</span>
+              {maquinasTrabajando[m.nombre] && (
+                <span className="text-[10px] text-amber-600 font-medium">(trabajando)</span>
+              )}
               <input type="number" min="1" max="10"
                 value={workersConfig[m.nombre] || 1}
                 onChange={(e) => setWorkersConfig(prev => ({ ...prev, [m.nombre]: parseInt(e.target.value) || 1 }))}
@@ -471,24 +484,23 @@ export default function Documentos() {
               title="Actualizar historial">
               <RefreshCw size={14} className={loadingHistory ? 'animate-spin' : ''} />
             </button>
-            {analisisEnCurso || analyzing ? (
-              <span className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm bg-amber-50 text-amber-700 border border-amber-200">
-                <Loader2 size={14} className="animate-spin" />
-                <span className="font-medium">Análisis en curso</span>
-                {analisisEnCurso && !analyzing && <span className="text-[10px] text-amber-500">(iniciado externamente)</span>}
+            {/* Indicador de análisis en curso + botón para iniciar en otra máquina */}
+            {analisisEnCurso && (
+              <span className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs bg-amber-50 text-amber-700 border border-amber-200">
+                <Loader2 size={12} className="animate-spin" />
+                <span className="font-medium">En curso</span>
               </span>
-            ) : (
-              uploaded.length > 0 && (
-                <button onClick={handleStartAnalysis} disabled={!agenteActivo}
-                  className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-all ${
-                    agenteActivo
-                      ? 'bg-[#0a6ea9] hover:bg-[#085d8f] text-white'
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                  }`}
-                  title={agenteActivo ? 'Iniciar análisis' : 'No hay agentes activos. Inicia agente.py primero.'}>
-                  <Play size={16} /> {agenteActivo ? 'Iniciar análisis' : 'Agente inactivo'}
-                </button>
-              )
+            )}
+            {uploaded.length > 0 && (
+              <button onClick={handleStartAnalysis} disabled={!agenteActivo}
+                className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-all ${
+                  agenteActivo
+                    ? 'bg-[#0a6ea9] hover:bg-[#085d8f] text-white'
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                }`}
+                title={agenteActivo ? 'Iniciar análisis' : 'No hay agentes activos. Inicia agente.py primero.'}>
+                <Play size={16} /> {agenteActivo ? 'Iniciar análisis' : 'Agente inactivo'}
+              </button>
             )}
           </div>
         </div>
