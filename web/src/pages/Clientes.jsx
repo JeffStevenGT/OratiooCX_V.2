@@ -553,7 +553,7 @@ export default function Clientes() {
                 <SortHeader label="Línea Principal" sortKey="linea" />
                 <SortHeader label="Paquete" sortKey="paquete" />
                 <SortHeader label="Tipo Renove" sortKey="renove" />
-                <SortHeader label="Estado" sortKey="estado" />
+                <SortHeader label="Hora" sortKey="hora" />
                 <SortHeader label="Fecha" sortKey="fecha" />
               </tr>
             </thead>
