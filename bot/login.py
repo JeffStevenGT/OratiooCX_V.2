@@ -270,8 +270,23 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
 
             # ═══ DETECTAR ERROR "No se han podido recuperar campañas" ═══
             if _detectar_y_cerrar_toast(page):
-                print("  [Extracción] [RETRY] Toast cerrado, reintentando búsqueda...")
-                raise Exception("Toast campañas — reintentar")
+                print(f"  [Extracción] [FAIL] {numero}: error campañas — saltando al siguiente")
+                return [{
+                    "DNI": numero,
+                    "Nombre": "ERROR CAMPANAS",
+                    "Direccion": "N/A",
+                    "Seg Fijo": "N/A",
+                    "Seg Movil": "N/A",
+                    "Paquete": "N/A",
+                    "Linea": numero,
+                    "es_cima": False,
+                    "tiene_renove_mixto": False,
+                    "variante_renove": "N/A",
+                    "tiene_tv": False,
+                    "es_principal": False,
+                    "etiquetas": [],
+                    "activo_desde": "N/A",
+                }]
 
             print("  [Extracción] Cargando ficha de cliente...")
             page.wait_for_timeout(1500)

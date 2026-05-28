@@ -252,7 +252,11 @@ def procesar_dni(page, dni: str, modal_ya_abierto: bool = False) -> tuple:
         # Guardar cada fila (línea del cliente)
         for fila in filas:
             es_no_cliente = fila.get("Nombre") == "NO ES CLIENTE"
-            estado = "no_cliente" if es_no_cliente else "completado"
+            es_error_campanas = fila.get("Nombre") == "ERROR CAMPANAS"
+            if es_error_campanas:
+                estado = "error"
+            else:
+                estado = "no_cliente" if es_no_cliente else "completado"
             es_cima = fila.get("es_cima", False)
 
             dinamicos = {
