@@ -250,6 +250,19 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     "_modal_abierto": True,  # Modal sigue abierto, escribir siguiente DNI
                 }]
 
+            # ═══ DETECTAR ERROR "No se han podido recuperar campañas" ═══
+            try:
+                error_campanas = page.locator(".message-relevant.error .title:has-text('recuperar campañas')")
+                if error_campanas.count() > 0 and error_campanas.first.is_visible(timeout=3000):
+                    print("  [Extracción] [WARN] Error 'No se han podido recuperar campañas' — cerrando aviso...")
+                    cerrar_btn = page.locator(".message-relevant.error .btn-close").first
+                    cerrar_btn.click(force=True, timeout=3000)
+                    page.wait_for_timeout(1000)
+                    # Si el error aparece, el cliente existe pero hay problema con campañas
+                    # Intentamos continuar igual para ver si al menos obtenemos datos básicos
+            except Exception:
+                pass
+
             print("  [Extracción] Cargando ficha de cliente...")
             page.wait_for_timeout(1500)
             page.wait_for_selector(".mod-barclient__container-data", timeout=20000)
@@ -274,6 +287,16 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
 
             print(f"  [Extracción] Cliente: {nombre} | DNI: {dni} | Paquete: {paquete}")
             print(f"  [Extracción] Dirección: {direccion}")
+
+            # ═══ CERRAR TOAST DE ERROR SI APARECIÓ (ej: "No se han podido recuperar campañas") ═══
+            try:
+                toast_error = page.locator(".message-relevant.error")
+                if toast_error.count() > 0 and toast_error.first.is_visible(timeout=2000):
+                    print("  [Extracción] [WARN] Cerrando toast de error antes de líneas...")
+                    toast_error.locator(".btn-close").first.click(force=True, timeout=3000)
+                    page.wait_for_timeout(1500)
+            except Exception:
+                pass
 
             # ── 3. BUCLE DE LÍNEAS CON PAGINACIÓN ─────
             lineas_finales = []
