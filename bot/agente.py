@@ -436,8 +436,10 @@ def main():
 
         except KeyboardInterrupt:
             print("\n[Agente] Deteniendo agente...")
-            if proceso_coordinador:
-                detener_coordinador({"id": 0, "comando": "detener"})
+            # NO detener coordinator — dejar browsers abiertos para cerrar Pangea manualmente
+            if proceso_coordinador and proceso_coordinador.poll() is None:
+                print(f"[Agente] Coordinator (PID: {proceso_coordinador.pid}) queda corriendo.")
+                print(f"[Agente] Cierra Pangea manualmente en las ventanas de Chromium.")
             # Marcar máquina como offline en Supabase
             try:
                 _api("PATCH", f"/maquinas?nombre=eq.{MAQUINA_NOMBRE}", {"estado": "offline"})
