@@ -207,12 +207,15 @@ def tomar_siguiente_dni() -> dict | None:
     return fila
 
 
-def guardar_resultado(dni: str, datos: dict, estado: str = "completado"):
+def guardar_resultado(dni: str, datos: dict, estado: str = "completado", linea_id: int = None):
     """Guarda/actualiza resultado en Supabase (UPSERT).
-    Hace MERGE completo de atributos_dinamicos para NO perder
-    pipeline, documento_id, datos_basicos, etc."""
-    # Leer datos existentes para mergear completo
-    existentes = _api("GET", f"/lineas?select=atributos_dinamicos,id&dni=eq.{dni}&limit=1&order=id.desc")
+    Si linea_id se pasa, actualiza esa fila específica (evita bug de DNI duplicados).
+    Si no, busca por DNI (comportamiento legacy)."""
+    if linea_id:
+        existentes = _api("GET", f"/lineas?select=atributos_dinamicos,id&id=eq.{linea_id}&limit=1")
+    else:
+        # Legacy: buscar por DNI (puede actualizar fila equivocada si hay duplicados)
+        existentes = _api("GET", f"/lineas?select=atributos_dinamicos,id&dni=eq.{dni}&limit=1&order=id.desc")
     ad_prev = {}
     if existentes:
         prev_ad = existentes[0].get("atributos_dinamicos", {}) or {}
@@ -262,8 +265,9 @@ def guardar_resultado(dni: str, datos: dict, estado: str = "completado"):
 
 # ── Procesar un DNI ──────────────────────────────
 
-def procesar_dni(page, dni: str, modal_ya_abierto: bool = False) -> tuple:
+def procesar_dni(page, dni: str, linea_id: int = None, modal_ya_abierto: bool = False) -> tuple:
     """Procesa un solo DNI.
+    linea_id: id de la fila en lineas (para evitar UPSERT por DNI duplicado).
     Retorna (exito: bool, modal_sigue_abierto: bool).
     """
     try:
@@ -352,7 +356,7 @@ def procesar_dni(page, dni: str, modal_ya_abierto: bool = False) -> tuple:
                 "linea_principal": dni,
                 "paquete": "N/A",
                 "atributos_dinamicos": {"error": str(e), "reintentos": reintentos},
-            }, estado="pendiente")  # "pendiente" para que vuelva a la cola
+            }, estado="pendiente", linea_id=linea_id)  # "pendiente" para que vuelva a la cola
         else:
             log(f"[FAIL] {dni} error definitivo tras {reintentos} reintentos")
             guardar_resultado(dni, {
@@ -360,7 +364,7 @@ def procesar_dni(page, dni: str, modal_ya_abierto: bool = False) -> tuple:
                 "linea_principal": dni,
                 "paquete": "N/A",
                 "atributos_dinamicos": {"error": str(e), "reintentos": reintentos},
-            }, estado="error")
+            }, estado="error", linea_id=linea_id)
         return False, False
 
 
@@ -414,7 +418,7 @@ def main():
                     page.wait_for_timeout(random.randint(1000, 2000))
 
                     # Procesar
-                    exito, modal_sigue = procesar_dni(page, dni, modal_ya_abierto=modal_abierto)
+                    exito, modal_sigue = procesar_dni(page, dni, linea_id=fila["id"], modal_ya_abierto=modal_abierto)
                     if exito:
                         procesados += 1
                         modal_abierto = modal_sigue
