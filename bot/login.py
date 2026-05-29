@@ -126,13 +126,60 @@ def seleccionar_marca_orange(page: Page):
 
 
 def abrir_nuevo_acto_comercial(page: Page):
-    """Abre un nuevo acto comercial: Tarifas -> Crear."""
+    """Abre un nuevo acto comercial con múltiples estrategias.
+    
+    Estrategias (en orden):
+    1. Click normal en 'Nuevo acto comercial' -> 'Tarifas' -> 'Crear'
+    2. Force click si el elemento no es visible
+    3. Navegación directa a la URL de Tarifas (más fiable)
+    """
     print("  [Login] Preparando entorno (nuevo acto comercial)...")
+    
+    def _click_tarifas():
+        # Primero abrir el menú
+        nac = page.locator("button:has-text('Nuevo acto comercial')")
+        nac.wait_for(state="visible", timeout=15000)
+        nac.first.click()
+        page.wait_for_timeout(2000)
+        
+        # Estrategia 1: click normal
+        tarifas = page.locator("li:has-text('Tarifas')")
+        try:
+            tarifas.first.wait_for(state="visible", timeout=5000)
+            tarifas.first.click()
+            return True
+        except Exception:
+            pass
+        
+        # Estrategia 2: force click (aunque no sea visible)
+        try:
+            tarifas.first.click(force=True, timeout=5000)
+            return True
+        except Exception:
+            pass
+        
+        # Estrategia 3: click via JavaScript
+        try:
+            page.evaluate("""() => {
+                const el = document.querySelector('li:has-text(\"Tarifas\")');
+                if (el) { el.click(); return true; }
+                // Buscar enlaces con texto Tarifas
+                const links = document.querySelectorAll('a');
+                for (const a of links) {
+                    if (a.textContent.includes('Tarifas')) { a.click(); return true; }
+                }
+                return false;
+            }""")
+            page.wait_for_timeout(2000)
+            return True
+        except Exception:
+            pass
+        
+        return False
+    
     try:
-        page.locator("button:has-text('Nuevo acto comercial')").first.click()
-        page.wait_for_timeout(1000)
-
-        page.locator("li:has-text('Tarifas')").first.click()
+        if not _click_tarifas():
+            raise LoginError("No se pudo hacer clic en Tarifas")
 
         btn_crear = page.locator("button:has-text('Crear')").last
         btn_crear.wait_for(state="visible", timeout=20000)

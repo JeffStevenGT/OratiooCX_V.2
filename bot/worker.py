@@ -382,82 +382,103 @@ def main():
     modal_abierto = False  # Para "no es cliente" — mantener modal abierto
     detener = False  # Bandera para salir del loop
 
-    with sync_playwright() as p:
-        browser, context = crear_contexto_espana(p, proxy_config=PROXY_CONFIG)
+    try:
+        # Inicializar Playwright sin context manager para NO cerrar browser al salir
+        pw = sync_playwright().start()
+        browser, context = crear_contexto_espana(pw, proxy_config=PROXY_CONFIG)
         page = context.new_page()
+    except Exception as e:
+        log(f"[CRIT] No se pudo iniciar Playwright: {e}")
+        return
 
-        try:
-            # Login
-            page.goto(ORANGE_URL, timeout=90000)
-            manejar_cookies_flexible(page)
-            realizar_login(page)
-            seleccionar_marca_orange(page)
-            abrir_nuevo_acto_comercial(page)
-            log("[LOCK] Login exitoso")
+    try:
+        # Login (con retry automático)
+        for intento in range(5):
+            try:
+                page.goto(ORANGE_URL, timeout=90000)
+                manejar_cookies_flexible(page)
+                realizar_login(page)
+                seleccionar_marca_orange(page)
+                abrir_nuevo_acto_comercial(page)
+                log(f"[LOCK] Login exitoso")
+                break
+            except Exception as e:
+                log(f"[RETRY] Login falló (intento {intento+1}/5): {e}")
+                if intento == 4:
+                    log("[CRIT] No se pudo iniciar sesión tras 5 intentos. Esperando...")
+                    # No crashear — esperar y reintentar
+                    time.sleep(30)
+                    continue
+                # Recuperar: recargar página
+                try:
+                    page.goto(ORANGE_URL, timeout=30000)
+                except:
+                    pass
+                time.sleep(5)
 
-            # Loop de procesamiento (con auto-recuperación en errores graves)
-            while not detener:
-                dni = "???"  # Para que exista si falla antes de asignar
-                try:  # 🔄 Inner try: cualquier error aquí reloguea en vez de cerrar
-                    # Verificar si el worker fue pausado desde la web
-                    if esta_pausado():
-                        log("[PAUSE] Worker pausado via web. Esperando 10s...")
-                        time.sleep(10)
-                        continue
+        # Loop de procesamiento — NUNCA sale del while, solo espera si no hay DNIs
+        while not detener:
+            dni = "???"
+            try:  # 🔄 Inner try: cualquier error aquí reloguea en vez de cerrar
+                # Verificar si el worker fue pausado desde la web
+                if esta_pausado():
+                    log("[PAUSE] Worker pausado via web. Esperando 10s...")
+                    time.sleep(10)
+                    continue
 
-                    # Tomar siguiente DNI
-                    fila = tomar_siguiente_dni()
-                    if not fila:
-                        log("[DONE] No hay mas DNIs pendientes. Worker finalizado.")
-                        break
+                # Tomar siguiente DNI
+                fila = tomar_siguiente_dni()
+                if not fila:
+                    # ⚡ NO romper el while — solo esperar a que lleguen más DNIs
+                    # El browser sigue abierto, la sesión de Pangea se mantiene
+                    reportar_actividad("")
+                    time.sleep(5)
+                    continue
 
-                    dni = fila["dni"]
-                    reportar_actividad(dni)
+                dni = fila["dni"]
+                reportar_actividad(dni)
 
-                    # Pausa aleatoria (reducida)
-                    page.wait_for_timeout(random.randint(1000, 2000))
+                # Pausa aleatoria
+                page.wait_for_timeout(random.randint(1000, 2000))
 
-                    # Procesar
-                    exito, modal_sigue = procesar_dni(page, dni, linea_id=fila["id"], modal_ya_abierto=modal_abierto)
-                    if exito:
-                        procesados += 1
-                        modal_abierto = modal_sigue
-                    else:
-                        errores += 1
-                        modal_abierto = False
-                        # ⚡ Intentar abrir modal de búsqueda (más rápido que recargar página)
+                # Procesar
+                exito, modal_sigue = procesar_dni(page, dni, linea_id=fila["id"], modal_ya_abierto=modal_abierto)
+                if exito:
+                    procesados += 1
+                    modal_abierto = modal_sigue
+                else:
+                    errores += 1
+                    modal_abierto = False
+                    # Intentar abrir modal de búsqueda
+                    try:
+                        log(f"[NEXT] Abriendo modal para siguiente DNI...")
                         try:
-                            log(f"[NEXT] Abriendo modal para siguiente DNI...")
-                            # Cerrar posibles toasts
-                            try:
-                                toast = page.locator(".message-relevant.error .btn-close")
-                                if toast.count() > 0:
-                                    toast.first.click(force=True, timeout=2000)
-                                    page.wait_for_timeout(500)
-                            except:
-                                pass
-                            # Click en Cambiar cliente para abrir modal
-                            btn = page.locator("button[title='Cambiar cliente']")
-                            btn.wait_for(state="visible", timeout=8000)
-                            btn.click(force=True)
-                            page.wait_for_timeout(1000)
-                            log("[NEXT] Modal abierto, listo para siguiente DNI")
+                            toast = page.locator(".message-relevant.error .btn-close")
+                            if toast.count() > 0:
+                                toast.first.click(force=True, timeout=2000)
+                                page.wait_for_timeout(500)
+                        except:
+                            pass
+                        btn = page.locator("button[title='Cambiar cliente']")
+                        btn.wait_for(state="visible", timeout=8000)
+                        btn.click(force=True)
+                        page.wait_for_timeout(1000)
+                        log("[NEXT] Modal abierto, listo para siguiente DNI")
+                        modal_abierto = False
+                    except Exception:
+                        try:
+                            log(f"[RECOVERY] No se pudo abrir modal. Recreando página...")
+                            page.close()
+                            page = context.new_page()
+                            page.goto(ORANGE_URL, timeout=30000)
+                            manejar_cookies_flexible(page)
+                            realizar_login(page)
+                            seleccionar_marca_orange(page)
+                            abrir_nuevo_acto_comercial(page)
+                            log("[RECOVERY] Página recreada correctamente")
                             modal_abierto = False
-                        except Exception:
-                            # Si falla, recargar página completa
-                            try:
-                                log(f"[RECOVERY] No se pudo abrir modal. Recreando página...")
-                                page.close()
-                                page = context.new_page()
-                                page.goto(ORANGE_URL, timeout=30000)
-                                manejar_cookies_flexible(page)
-                                realizar_login(page)
-                                seleccionar_marca_orange(page)
-                                abrir_nuevo_acto_comercial(page)
-                                log("[RECOVERY] Página recreada correctamente")
-                                modal_abierto = False
-                            except Exception as recovery_err:
-                                log(f"[RECOVERY] Error al recrear página: {recovery_err}")
+                        except Exception as recovery_err:
+                            log(f"[RECOVERY] Error al recrear página: {recovery_err}")
 
                     # Verificar sesión cada 3 DNIs
                     if (procesados + errores) % 3 == 0:
@@ -470,36 +491,37 @@ def main():
 
                     # Verificar límite
                     if MAX_DNIS > 0 and (procesados + errores) >= MAX_DNIS:
-                        log(f"🏁 Límite alcanzado ({MAX_DNIS} DNIs)")
-                        break
+                        log(f"🏁 Límite alcanzado ({MAX_DNIS} DNIs). Esperando...")
+                        time.sleep(60)
+                        procesados = 0
+                        errores = 0
 
-                except Exception as e:  # 🔄 CUALQUIER error: reloguear, no cerrar
-                    log(f"[ERR] Error grave en DNI {dni}: {e}")
-                    log("[RECOVERY] Relogueando automáticamente...")
-                    try:
-                        page.close()
-                    except:
-                        pass
-                    try:
-                        page = context.new_page()
-                        page.goto(ORANGE_URL, timeout=30000)
-                        manejar_cookies_flexible(page)
-                        realizar_login(page)
-                        seleccionar_marca_orange(page)
-                        abrir_nuevo_acto_comercial(page)
-                        modal_abierto = False
-                        log("[RECOVERY] Relogueo exitoso, continuando...")
-                    except Exception as login_err:
-                        log(f"[CRIT] No se pudo reloguear: {login_err}. Esperando 30s...")
-                        time.sleep(30)
-                    continue
+            except Exception as e:  # 🔄 CUALQUIER error: reloguear, no cerrar
+                log(f"[ERR] Error grave en DNI {dni}: {e}")
+                log("[RECOVERY] Relogueando automáticamente...")
+                try:
+                    page.close()
+                except:
+                    pass
+                try:
+                    page = context.new_page()
+                    page.goto(ORANGE_URL, timeout=30000)
+                    manejar_cookies_flexible(page)
+                    realizar_login(page)
+                    seleccionar_marca_orange(page)
+                    abrir_nuevo_acto_comercial(page)
+                    modal_abierto = False
+                    log("[RECOVERY] Relogueo exitoso, continuando...")
+                except Exception as login_err:
+                    log(f"[CRIT] No se pudo reloguear: {login_err}. Esperando 30s...")
+                    time.sleep(30)
+                continue
 
-        except KeyboardInterrupt:
-            log("⏹  Detenido por señal")
-            detener = True
-        finally:
-            # NO cerrar browser — lo cierra el usuario manualmente para liberar sesión Pangea
-            log("[CLEANUP] Worker finalizado. Browser queda abierto para que cierres Pangea manualmente.")
+    except KeyboardInterrupt:
+        log("⏹  Detenido por señal")
+        detener = True
+    finally:
+        log("[CLEANUP] Worker finalizado. Browser queda ABIERTO (cierra Pangea manualmente).")
 
     log(f"Resumen -> Procesados: [OK] {procesados} | [ERR] {errores}")
 

@@ -461,13 +461,7 @@ export default function Documentos() {
               title="Actualizar historial">
               <RefreshCw size={14} className={loadingHistory ? 'animate-spin' : ''} />
             </button>
-            {/* Indicador de análisis en curso + botón para iniciar en otra máquina */}
-            {analisisEnCurso && (
-              <span className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs bg-amber-50 text-amber-700 border border-amber-200">
-                <Loader2 size={12} className="animate-spin" />
-                <span className="font-medium">En curso</span>
-              </span>
-            )}
+            {/* Botón para iniciar análisis — solo activo cuando el agente está inicializado */}
             {uploaded.length > 0 && (
               <button onClick={handleStartAnalysis} disabled={!agenteActivo}
                 className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-all ${
