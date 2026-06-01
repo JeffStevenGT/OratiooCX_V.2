@@ -262,7 +262,7 @@ def heartbeat_loop():
             workers_info = [
                 {
                     "id": wid,
-                    "proxy_ip": winfo.get("proxy", {}).get("ip", "N/A"),
+                    "proxy_ip": (winfo.get("proxy") or {}).get("ip", "N/A"),
                     "activo_desde": winfo.get("started_at", ""),
                     "pid": winfo.get("process", None) and winfo["process"].pid or 0,
                     "estado": "pausado" if winfo.get("pausado") else "activo",
