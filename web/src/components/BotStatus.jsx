@@ -1,12 +1,23 @@
 import { useState, useEffect } from 'react'
-import { Activity, Monitor, Wifi, Loader2, ChevronDown, ChevronUp, Play, Pause, Square, AlertTriangle, WifiOff } from 'lucide-react'
+import { Activity, Loader2, ChevronDown, ChevronUp, Play, Pause, Square, WifiOff } from 'lucide-react'
 import { supabase } from '../supabaseClient'
 
 const statusCfg = {
-  activo:   { badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-400', pulse: true, label: 'Activo' },
-  pausado:  { badge: 'bg-amber-50 text-amber-700 border-amber-200',     dot: 'bg-amber-500',  pulse: false, label: 'Pausado' },
-  detenido: { badge: 'bg-gray-100 text-gray-500 border-[#e8dce6]',        dot: 'bg-gray-300',   pulse: false, label: 'Detenido' },
-  error:    { badge: 'bg-red-50 text-red-700 border-red-200',            dot: 'bg-red-400',    pulse: false, label: 'Error' },
+  activo:  { badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-400', pulse: true,  label: 'Activo' },
+  pausado: { badge: 'bg-amber-50 text-amber-700 border-amber-200',     dot: 'bg-amber-500',  pulse: false, label: 'Pausado' },
+  sin_pid: { badge: 'bg-gray-100 text-gray-400 border-gray-200',       dot: 'bg-gray-300',   pulse: false, label: 'Sin señal' },
+  error:   { badge: 'bg-red-50 text-red-700 border-red-200',           dot: 'bg-red-400',    pulse: false, label: 'Error' },
+}
+
+/** Determina el estado real del worker:
+ *  - Si dice "activo" pero no tiene PID -> es stale (sin_pid)
+ *  - Si dice "activo" pero sin activo_desde -> stale
+ *  - Sino, devuelve el estado que reporta */
+function estadoReal(w) {
+  if (w.estado === 'activo' && (!w.pid || !w.activo_desde)) {
+    return 'sin_pid'
+  }
+  return w.estado || 'sin_pid'
 }
 
 export default function BotStatus() {
@@ -28,8 +39,17 @@ export default function BotStatus() {
     return () => clearInterval(interval)
   }, [])
 
+  const MAQUINA_TIMEOUT_MS = 30_000 // 30s sin heartbeat = offline
+
+  function maquinaOnline(m) {
+    // Online solo si el heartbeat es reciente (< 30s)
+    if (!m.ultimo_heartbeat) return false
+    const diff = Date.now() - new Date(m.ultimo_heartbeat).getTime()
+    return diff < MAQUINA_TIMEOUT_MS
+  }
+
   const totalWorkers = maquinas.reduce((sum, m) => sum + (m.workers_activos || 0), 0)
-  const onlineCount = maquinas.filter(m => m.estado === 'conectado' || m.estado === 'activo').length
+  const onlineCount = maquinas.filter(maquinaOnline).length
 
   const enviarComando = async (maquinaNombre, comando, workerId = null) => {
     const key = `${maquinaNombre}-${comando}-${workerId || ''}`
@@ -46,22 +66,12 @@ export default function BotStatus() {
     } catch {}
   }
 
-  const getWorkerBadge = (estado) => {
-    const cfg = statusCfg[estado] || statusCfg.detenido
-    return (
-      <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium border ${cfg.badge}`}>
-        {cfg.pulse && <span className={`w-1.5 h-1.5 ${cfg.dot} rounded-full animate-pulse`} />}
-        {cfg.label}
-      </span>
-    )
-  }
-
   return (
     <div className="card !p-3">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-xs font-semibold text-oratioo-dark flex items-center gap-1.5">
           <Activity size={12} className="text-oratioo-purple" />
-          Estado del Bot
+          Estado de la App
         </h3>
         {loading ? (
           <Loader2 size={12} className="animate-spin text-oratioo-gray" />
@@ -80,74 +90,121 @@ export default function BotStatus() {
       {maquinas.length > 0 && (
         <div className="space-y-1">
           {maquinas.map(m => {
-            const isOnline = m.estado === 'conectado' || m.estado === 'activo'
+            const isOnline = maquinaOnline(m)
             const isExpanded = expanded === m.id
             const workers = m.workers_info || []
+
+            // Estado real de cada worker:
+            // - Si la máquina está offline, todos son "sin señal" automaticamente
+            // - Si está online, usa la detección de zombies (PID ausente)
+            const workersConEstado = workers.map(w => ({
+              ...w,
+              _estadoReal: isOnline ? estadoReal(w) : 'sin_pid'
+            }))
+
+            // Detectar si hay workers trabajando activamente (con DNI asignado)
+            const algunoTrabajando = workersConEstado.some(w => w._estadoReal === 'activo' && w.dni_actual)
+            const activos = workersConEstado.filter(w => w._estadoReal === 'activo').length
+            const pausados = workersConEstado.filter(w => w._estadoReal === 'pausado').length
+            const sinPid = workersConEstado.filter(w => w._estadoReal === 'sin_pid').length
+            const hayReales = activos + pausados > 0
+
             return (
               <div key={m.id} className="bg-oratioo-light/40 rounded-lg border border-oratioo-border">
-                <button
-                  onClick={() => setExpanded(isExpanded ? null : m.id)}
-                  className="flex items-center justify-between w-full px-3 py-1.5 text-xs"
-                >
+                <div className="flex items-center justify-between w-full px-3 py-1.5 text-xs">
                   <div className="flex items-center gap-2">
                     <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-gray-300'}`} />
                     <span className="font-medium text-oratioo-dark">{m.nombre}</span>
                     {isOnline ? (
-                      <span className="text-emerald-600 text-[10px]">Online</span>
+                      <>
+                        <span className="text-emerald-600 text-[10px]">Online</span>
+                        {algunoTrabajando && (
+                          <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                            Trabajando
+                          </span>
+                        )}
+                      </>
                     ) : (
                       <span className="text-gray-400 text-[10px]">Offline</span>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-oratioo-gray">{m.workers_activos || 0} workers</span>
+                    {/* Contador funcional */}
+                    <span className="text-[10px] text-oratioo-gray">
+                      {hayReales ? (
+                        <>
+                          <span className="text-emerald-600 font-semibold">{activos} activos</span>
+                          {pausados > 0 && <span className="text-amber-600 font-semibold ml-1">· {pausados} pausados</span>}
+                        </>
+                      ) : sinPid > 0 ? (
+                        <span className="text-gray-400">{sinPid} sin señal</span>
+                      ) : workers.length > 0 ? (
+                        <span className="text-oratioo-gray">sin agentes activos</span>
+                      ) : (
+                        <span>{m.workers_activos || 0} workers</span>
+                      )}
+                    </span>
+
+                    {/* Botones de acción — solo si hay workers reales */}
+                    {isOnline && hayReales && (
+                      <>
+                        {activos > 0 && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); enviarComando(m.nombre, 'pausar_todos'); }}
+                            disabled={accionEjecutando === `${m.nombre}-pausar_todos-`}
+                            className="p-1 rounded hover:bg-amber-50 text-amber-600 transition-colors disabled:opacity-30"
+                            title="Pausar todos los workers"
+                          >
+                            {accionEjecutando === `${m.nombre}-pausar_todos-` ? <Loader2 size={12} className="animate-spin" /> : <Pause size={12} />}
+                          </button>
+                        )}
+                        {pausados > 0 && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); enviarComando(m.nombre, 'reanudar_todos'); }}
+                            disabled={accionEjecutando === `${m.nombre}-reanudar_todos-`}
+                            className="p-1 rounded hover:bg-emerald-50 text-emerald-600 transition-colors disabled:opacity-30"
+                            title="Reanudar todos los workers"
+                          >
+                            {accionEjecutando === `${m.nombre}-reanudar_todos-` ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); enviarComando(m.nombre, 'detener_todos'); }}
+                          disabled={accionEjecutando === `${m.nombre}-detener_todos-`}
+                          className="p-1 rounded hover:bg-red-50 text-red-500 transition-colors disabled:opacity-30"
+                          title="Detener todos los workers"
+                        >
+                          {accionEjecutando === `${m.nombre}-detener_todos-` ? <Loader2 size={12} className="animate-spin" /> : <Square size={12} />}
+                        </button>
+                      </>
+                    )}
+
                     {workers.length > 0 && (
-                      isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+                      <button
+                        onClick={() => setExpanded(isExpanded ? null : m.id)}
+                        className="p-0.5 text-oratioo-gray hover:text-oratioo-dark transition-colors"
+                      >
+                        {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      </button>
                     )}
                   </div>
-                </button>
+                </div>
+
                 {isExpanded && workers.length > 0 && (
                   <div className="px-3 pb-2 space-y-1.5 border-t border-oratioo-border pt-2 mt-0">
-                    {workers.map((w, i) => {
-                      const estado = w.estado || 'activo'
-                      const wk = `${m.nombre}-${w.id || i}`
+                    {workersConEstado.map((w, i) => {
+                      const cfg = statusCfg[w._estadoReal] || statusCfg.sin_pid
                       return (
-                        <div key={wk} className="bg-white rounded-lg p-2 border border-oratioo-border">
+                        <div key={`${m.nombre}-${w.id || i}`} className="bg-white rounded-lg p-2 border border-oratioo-border">
                           <div className="flex items-center justify-between mb-1">
                             <div className="flex items-center gap-2">
                               <span className="font-mono text-[11px] font-semibold text-oratioo-dark">
                                 Worker #{w.id || (i + 1)}
                               </span>
-                              {getWorkerBadge(estado)}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              {estado === 'activo' && (
-                                <button
-                                  onClick={() => enviarComando(m.nombre, 'pausar', w.id)}
-                                  disabled={accionEjecutando === `${m.nombre}-pausar-${w.id}`}
-                                  className="p-1 rounded hover:bg-amber-50 text-amber-600 transition-colors disabled:opacity-30"
-                                  title="Pausar"
-                                >
-                                  {accionEjecutando === `${m.nombre}-pausar-${w.id}` ? <Loader2 size={12} className="animate-spin" /> : <Pause size={12} />}
-                                </button>
-                              )}
-                              {estado === 'pausado' && (
-                                <button
-                                  onClick={() => enviarComando(m.nombre, 'reanudar', w.id)}
-                                  disabled={accionEjecutando === `${m.nombre}-reanudar-${w.id}`}
-                                  className="p-1 rounded hover:bg-emerald-50 text-emerald-600 transition-colors disabled:opacity-30"
-                                  title="Reanudar"
-                                >
-                                  {accionEjecutando === `${m.nombre}-reanudar-${w.id}` ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
-                                </button>
-                              )}
-                              <button
-                                onClick={() => enviarComando(m.nombre, 'detener', w.id)}
-                                disabled={accionEjecutando === `${m.nombre}-detener-${w.id}`}
-                                className="p-1 rounded hover:bg-red-50 text-red-500 transition-colors disabled:opacity-30"
-                                title="Detener"
-                              >
-                                {accionEjecutando === `${m.nombre}-detener-${w.id}` ? <Loader2 size={12} className="animate-spin" /> : <Square size={12} />}
-                              </button>
+                              <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium border ${cfg.badge}`}>
+                                {cfg.pulse && <span className={`w-1.5 h-1.5 ${cfg.dot} rounded-full animate-pulse`} />}
+                                {cfg.label}
+                              </span>
                             </div>
                           </div>
                           {w.dni_actual && (
@@ -173,7 +230,7 @@ export default function BotStatus() {
 
       {!loading && maquinas.length === 0 && (
         <p className="text-[11px] text-oratioo-gray text-center py-2">
-          No hay máquinas configuradas. Ve a Configurar Bot.
+          No hay máquinas configuradas. Ve a Configurar App.
         </p>
       )}
     </div>

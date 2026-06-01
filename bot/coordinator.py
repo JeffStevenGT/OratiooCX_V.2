@@ -14,16 +14,15 @@ FLUJO:
   7. Web UI ve el estado en tiempo real
 
 USO:
-  python coordinator.py                          # Workers desde Supabase (tabla maquinas)
-  python coordinator.py --workers 5              # Forzar 5 workers
-  python coordinator.py --workers 0              # Solo monitorear
+  python coordinator.py                          # Modo monitoreo — control desde la Web UI
+  python coordinator.py --workers 5              # Forzar 5 workers (modo directo)
+  python coordinator.py --workers 0              # Solo monitorear (igual que sin args)
 """
 
 import os
 import sys
 import time
 import json
-import signal
 import random
 import subprocess
 import threading
@@ -255,23 +254,11 @@ def detener_todos_los_workers():
 
 def heartbeat_loop():
     """Hilo que reporta estado a Supabase cada N segundos.
-    Preserva dni_actual que los workers reportan individualmente."""
+    Actualiza workers_info desde memoria local, NO reescribe el array completo
+    para no pisar los dni_actual que los workers reportan individualmente."""
     global detener
     while not detener:
         with lock:
-            # Leer workers_info actual de Supabase para preservar dni_actual
-            datos_previos = _api("GET", f"/maquinas?nombre=eq.{MAQUINA_NOMBRE}&select=workers_info,id&limit=1")
-            dni_map = {}
-            if datos_previos:
-                prev = datos_previos[0].get("workers_info", []) or []
-                if isinstance(prev, str):
-                    import json as _json
-                    try: prev = _json.loads(prev)
-                    except: prev = []
-                for pw in prev:
-                    if isinstance(pw, dict) and pw.get("dni_actual"):
-                        dni_map[str(pw.get("id"))] = pw["dni_actual"]
-
             workers_info = [
                 {
                     "id": wid,
@@ -279,7 +266,7 @@ def heartbeat_loop():
                     "activo_desde": winfo.get("started_at", ""),
                     "pid": winfo.get("process", None) and winfo["process"].pid or 0,
                     "estado": "pausado" if winfo.get("pausado") else "activo",
-                    "dni_actual": dni_map.get(str(wid), ""),
+                    "dni_actual": "",  # Los workers lo reportan ellos mismos
                 }
                 for wid, winfo in workers_activos.items()
             ]
@@ -310,18 +297,84 @@ def monitor_workers_loop():
                 accion = cmd.get("comando", "")
                 params = cmd.get("parametros", {}) or {}
                 wid = params.get("worker_id")
-                if accion == "pausar" and wid:
+                if accion == "reset_queue":
+                    print(f"[Coordinator] [CMD] Reseteando cola...")
+                    try:
+                        from reset_queue import reset
+                        reset()
+                        print(f"[Coordinator] [CMD] Cola reseteada")
+                        _api("PATCH", f"/comandos_bot?id=eq.{cid}", {"estado": "completado", "resultado": "Cola reseteada"})
+                    except Exception as e:
+                        print(f"[Coordinator] [CMD] Error reset: {e}")
+                        _api("PATCH", f"/comandos_bot?id=eq.{cid}", {"estado": "error", "resultado": str(e)})
+                elif accion == "iniciar_workers":
+                    print(f"[Coordinator] [CMD] Iniciando workers desde cola...")
+                    try:
+                        # Leer config de máquina actual (default 3 si no configurado)
+                        maq = _api("GET", f"/maquinas?nombre=eq.{MAQUINA_NOMBRE}&select=workers_config&limit=1")
+                        num = int(maq[0].get("workers_config", 3)) if maq else 3
+                        if num <= 0:
+                            num = 3
+
+                        # Cargar proxies y lanzar workers (reutiliza lógica de main)
+                        todos_proxies = cargar_todos_los_proxies()
+                        asignaciones = asignar_proxies(todos_proxies, num)
+
+                        lanzados = 0
+
+                        for i in range(num):
+                            wid = i + 1
+                            with lock:
+                                if wid in workers_activos:
+                                    continue
+                            proc = lanzar_worker(wid, asignaciones[i])
+                            with lock:
+                                if proc:
+                                    workers_activos[wid] = {
+                                        "process": proc,
+                                        "proxy": asignaciones[i],
+                                        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                                    }
+                                    lanzados += 1
+                            time.sleep(2)
+
+                        print(f"[Coordinator] [CMD] {lanzados} workers iniciados")
+                        _api("PATCH", f"/comandos_bot?id=eq.{cid}", {"estado": "completado", "resultado": f"{lanzados} workers iniciados"})
+                    except Exception as e:
+                        print(f"[Coordinator] [CMD] Error al iniciar: {e}")
+                        _api("PATCH", f"/comandos_bot?id=eq.{cid}", {"estado": "error", "resultado": str(e)})
+                elif accion == "pausar_todos":
+                    with lock:
+                        for wid, winfo in workers_activos.items():
+                            winfo["pausado"] = True
+                        print(f"[Coordinator] [CMD] Todos los workers pausados")
+                    _api("PATCH", f"/comandos_bot?id=eq.{cid}", {"estado": "completado"})
+                elif accion == "reanudar_todos":
+                    with lock:
+                        for wid, winfo in workers_activos.items():
+                            winfo["pausado"] = False
+                        print(f"[Coordinator] [CMD] Todos los workers reanudados")
+                    _api("PATCH", f"/comandos_bot?id=eq.{cid}", {"estado": "completado"})
+                elif accion == "detener_todos":
+                    detener_todos_los_workers()
+                    print(f"[Coordinator] [CMD] Todos los workers detenidos")
+                    _api("PATCH", f"/comandos_bot?id=eq.{cid}", {"estado": "completado"})
+                elif accion == "pausar" and wid:
                     wk = next((w for w, v in workers_activos.items() if str(w) == str(wid)), None)
                     if wk and wk in workers_activos:
                         workers_activos[wk]["pausado"] = True
                         print(f"[Coordinator] [CMD] Worker #{wid} pausado")
-                    _api("PATCH", f"/comandos_bot?id=eq.{cid}", {"estado": "completado"})
+                    else:
+                        print(f"[Coordinator] [WARN] Worker #{wid} no encontrado para pausar")
+                    _api("PATCH", f"/comandos_bot?id=eq.{cid}", {"estado": "completado", "resultado": f"Worker {wid} {'pausado' if wk else 'no encontrado'}"})
                 elif accion == "reanudar" and wid:
                     wk = next((w for w, v in workers_activos.items() if str(w) == str(wid)), None)
                     if wk and wk in workers_activos:
                         workers_activos[wk]["pausado"] = False
                         print(f"[Coordinator] [CMD] Worker #{wid} reanudado")
-                    _api("PATCH", f"/comandos_bot?id=eq.{cid}", {"estado": "completado"})
+                    else:
+                        print(f"[Coordinator] [WARN] Worker #{wid} no encontrado para reanudar")
+                    _api("PATCH", f"/comandos_bot?id=eq.{cid}", {"estado": "completado", "resultado": f"Worker {wid} {'reanudado' if wk else 'no encontrado'}"})
                 elif accion == "detener" and wid:
                     wk = next((w for w, v in workers_activos.items() if str(w) == str(wid)), None)
                     if wk and wk in workers_activos:
@@ -329,7 +382,9 @@ def monitor_workers_loop():
                         proc.terminate()
                         del workers_activos[wk]
                         print(f"[Coordinator] [CMD] Worker #{wid} detenido")
-                    _api("PATCH", f"/comandos_bot?id=eq.{cid}", {"estado": "completado"})
+                    else:
+                        print(f"[Coordinator] [WARN] Worker #{wid} no encontrado para detener")
+                    _api("PATCH", f"/comandos_bot?id=eq.{cid}", {"estado": "completado", "resultado": f"Worker {wid} {'detenido' if wk else 'no encontrado'}"})
 
 
 
@@ -347,33 +402,25 @@ def main():
     args = parser.parse_args()
 
     num_workers = args.workers
-    if num_workers is None:
-        # Leer configuración desde Supabase (tabla maquinas)
-        try:
-            maquinas = _api("GET", f"/maquinas?nombre=eq.{MAQUINA_NOMBRE}&select=workers_config")
-            if maquinas and len(maquinas) > 0:
-                num_workers = int(maquinas[0].get("workers_config", 0) or 0)
-            else:
-                num_workers = 0
-        except Exception as e:
-            num_workers = 0
-    
     if num_workers is None or num_workers <= 0:
-        print("[Coordinator] Modo monitoreo — 0 workers")
-        num_workers = 0
+        # Leer de Supabase (configurado en Configurar App)
+        try:
+            maq = _api("GET", f"/maquinas?nombre=eq.{MAQUINA_NOMBRE}&select=workers_config&limit=1")
+            num_workers = int(maq[0].get("workers_config", 4)) if maq else 4
+        except:
+            num_workers = 4
+        if num_workers <= 0:
+            num_workers = 4
 
+    print(f"[Coordinator] Iniciando con {num_workers} workers...")
 
     # ── Cargar proxies ──
     todos_proxies = cargar_todos_los_proxies()
 
-    # ── Asignar proxies ──
+    # ── Lanzar workers (con stagger) ──
     if num_workers > 0:
-        asignaciones = asignar_proxies(todos_proxies, num_workers)
-        proxies_libres = len(todos_proxies) - num_workers
-
-        # ── Lanzar workers ──
         for i in range(num_workers):
-            proxy = asignaciones[i]
+            proxy = todos_proxies[i % len(todos_proxies)] if todos_proxies else None
             proc = lanzar_worker(i + 1, proxy)
             if proc:
                 with lock:
@@ -382,6 +429,7 @@ def main():
                         "proxy": proxy,
                         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                     }
+            time.sleep(2)  # Stagger
 
     # ── Iniciar hilos de monitoreo ──
     hb_thread = threading.Thread(target=heartbeat_loop, daemon=True)
@@ -390,33 +438,18 @@ def main():
     monitor_thread = threading.Thread(target=monitor_workers_loop, daemon=True)
     monitor_thread.start()
 
-    # ── Manejar Ctrl+C ──
-    def signal_handler(sig, frame):
-        global detener
-        print("\n[Coordinator] ⏹  Deteniendo...")
-        detener = True
-        detener_todos_los_workers()
-        # Reportar estado final
-        reportar_estado([])
-        print("[Coordinator] [BYE]  Bye!")
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
-    # ── Loop principal ──
+    # ── Manejar Ctrl+C con try/except (más fiable en Windows) ──
+    print("[Coordinator] Presiona Ctrl+C para detener.")
     try:
         while not detener:
             time.sleep(1)
-            # Mostrar estado cada 15s
-            with lock:
-                activos = len(workers_activos)
-            if activos > 0:
-                print(f"\r[Coordinator] [ACT]  Workers activos: {activos}", end="")
-            else:
-                print(f"\r[Coordinator] [OFF]  Sin workers activos", end="")
     except KeyboardInterrupt:
-        signal_handler(None, None)
+        print("\n[Coordinator] ⏹  Deteniendo...")
+        detener = True
+        detener_todos_los_workers()
+        reportar_estado([])
+        print("[Coordinator] [BYE]  Bye!")
+        sys.exit(0)
 
 
 if __name__ == "__main__":

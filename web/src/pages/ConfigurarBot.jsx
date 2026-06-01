@@ -4,6 +4,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../supabaseClient'
 
+
 export default function ConfigurarBot() {
   const [machines, setMachines] = useState([])
   const [proxies, setProxies] = useState([])
@@ -190,10 +191,10 @@ export default function ConfigurarBot() {
         <div>
           <h1 className="text-xl font-bold text-oratioo-dark flex items-center gap-2">
             <Settings size={22} className="text-oratioo-purple" />
-            Configurar Bot
+            Configurar App
           </h1>
           <p className="text-sm text-oratioo-gray mt-1">
-            Define las máquinas y workers del bot
+            Define las máquinas y workers de la App
           </p>
         </div>
         <button onClick={loadData} className="btn-primary p-2" title="Recargar datos">

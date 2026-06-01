@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import {
   Upload, FileSpreadsheet, FileText, File, X, CheckCircle2, AlertCircle,
-  Loader2, Clock, Eye, Database, Trash2, Play, RefreshCw, ChevronDown, ChevronRight,
+  Loader2, Clock, Eye, Database, Trash2, RefreshCw, ChevronDown, ChevronRight,
+  List, AlertTriangle,
 } from 'lucide-react'
 import { supabase } from '../supabaseClient'
 import BotStatus from '../components/BotStatus'
@@ -49,7 +50,6 @@ export default function Documentos() {
   const [analyzing, setAnalyzing] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
   const [agenteActivo, setAgenteActivo] = useState(false)
-  const [soloHoy, setSoloHoy] = useState(true)
   const [expandedDay, setExpandedDay] = useState(null)
   const [dayDetails, setDayDetails] = useState({})
   const [maquinasDisponibles, setMaquinasDisponibles] = useState([])
@@ -142,6 +142,54 @@ export default function Documentos() {
     const interval = setInterval(() => { checkAgente(); fetchMaquinas() }, 10000)
     return () => clearInterval(interval)
   }, [])
+
+  // ── Queue / Lote stats ──
+  const [queueStats, setQueueStats] = useState({ total: 0, pendientes: 0, en_progreso: 0, completados: 0, errores: 0 })
+  const [resetting, setResetting] = useState(false)
+  const [resetMsg, setResetMsg] = useState({ status: '', text: '' }) // { status: 'ok'|'error', text: '' }
+
+  const loadQueueStats = async () => {
+    try {
+      // Consultas COUNT directas (sin limite, precisas)
+      const [totalRes, pendientesRes, progRes, compRes, errRes] = await Promise.all([
+        supabase.from('lineas').select('*', { count: 'exact', head: true }),
+        supabase.from('lineas').select('*', { count: 'exact', head: true }).filter('atributos_dinamicos->>estado', 'eq', 'pendiente'),
+        supabase.from('lineas').select('*', { count: 'exact', head: true }).filter('atributos_dinamicos->>estado', 'eq', 'en_progreso'),
+        supabase.from('lineas').select('*', { count: 'exact', head: true }).filter('atributos_dinamicos->>estado', 'eq', 'completado'),
+        supabase.from('lineas').select('*', { count: 'exact', head: true }).filter('atributos_dinamicos->>estado', 'eq', 'error'),
+      ])
+      setQueueStats({
+        total: totalRes.count || 0,
+        pendientes: (pendientesRes.count || 0) + (progRes.count || 0),
+        completados: compRes.count || 0,
+        errores: errRes.count || 0,
+      })
+    } catch {}
+  }
+
+  useEffect(() => {
+    loadQueueStats()
+    const interval = setInterval(loadQueueStats, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleResetLote = async () => {
+    setResetting(true)
+    setResetMsg({ status: '', text: '' })
+    try {
+      const { error } = await supabase.from('comandos_bot').insert({
+        maquina_destino: 'PC-Jeff', comando: 'reset_queue',
+        parametros: {}, estado: 'pendiente',
+      })
+      if (error) throw error
+      setResetMsg({ status: 'ok', text: 'Comando enviado. Recargando cola desde numeros.txt...' })
+      setTimeout(loadQueueStats, 2000)
+    } catch (err) {
+      setResetMsg({ status: 'error', text: err.message || 'Error al enviar comando' })
+    }
+    setResetting(false)
+    setTimeout(() => setResetMsg({ status: '', text: '' }), 5000)
+  }
 
   const onDrop = useCallback((acceptedFiles) => {
     setError('')
@@ -327,32 +375,7 @@ export default function Documentos() {
 
       <BotStatus />
 
-      {/* Selector de máquinas para iniciar análisis */}
-      {maquinasDisponibles.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 p-2 bg-oratioo-light/30 rounded-lg border border-oratioo-border">
-          <span className="text-[10px] font-semibold text-oratioo-dark uppercase tracking-wider">Analizar en:</span>
-          {maquinasDisponibles.map(m => (
-            <label key={m.nombre} className="flex items-center gap-1.5 text-xs cursor-pointer">
-              <input type="checkbox"
-                checked={selectedMaquinas[m.nombre] || false}
-                onChange={(e) => setSelectedMaquinas(prev => ({ ...prev, [m.nombre]: e.target.checked }))}
-                className="rounded border-oratioo-border" />
-              <span className="font-medium">{m.nombre}</span>
-              {maquinasTrabajando[m.nombre] && (
-                <span className="text-[10px] text-amber-600 font-medium">(trabajando)</span>
-              )}
-              <input type="number" min="1" max="10"
-                value={workersConfig[m.nombre] || 1}
-                onChange={(e) => setWorkersConfig(prev => ({ ...prev, [m.nombre]: parseInt(e.target.value) || 1 }))}
-                className="w-10 border border-oratioo-border rounded px-1 py-0.5 text-xs text-center"
-                title="Workers" />
-            </label>
-          ))}
-        </div>
-      )}
-
-
-
+      {/* ── Dropzone ── */}
       <div {...getRootProps()} className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all ${
         isDragActive ? 'border-oratioo-purple bg-purple-50' : 'border-oratioo-border hover:border-oratioo-purple bg-white'
       }`}>
@@ -442,181 +465,122 @@ export default function Documentos() {
         </div>
       )}
 
-      {/* History */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-oratioo-dark flex items-center gap-2">
-            <Clock size={14} className="text-oratioo-gray" /> Historial de cargas
-          </h3>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setSoloHoy(!soloHoy)}
-              className={`text-xs px-3 py-2 rounded-lg border transition-all flex items-center gap-1.5 ${
-                soloHoy ? 'bg-[#481163] text-white border-[#481163]' : 'bg-white text-oratioo-dark border-oratioo-border hover:bg-oratioo-light'
-              }`}
-              title={soloHoy ? 'Mostrar todos los días' : 'Mostrar solo hoy'}>
-              <Clock size={14} /> {soloHoy ? 'Solo hoy' : 'Ver todo'}
-            </button>
-            <button onClick={fetchHistory} disabled={loadingHistory}
-              className="text-xs bg-white border border-oratioo-border text-oratioo-dark px-3 py-2 rounded-lg hover:bg-oratioo-light transition-all flex items-center gap-1.5"
-              title="Actualizar historial">
-              <RefreshCw size={14} className={loadingHistory ? 'animate-spin' : ''} />
-            </button>
-            {/* Botón para iniciar análisis — solo activo cuando el agente está inicializado */}
-            {uploaded.length > 0 && (
-              <button onClick={handleStartAnalysis} disabled={!agenteActivo}
-                className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition-all ${
-                  agenteActivo
-                    ? 'bg-[#0a6ea9] hover:bg-[#085d8f] text-white'
-                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                }`}
-                title={agenteActivo ? 'Iniciar análisis' : 'No hay agentes activos. Inicia agente.py primero.'}>
-                <Play size={16} /> {agenteActivo ? 'Iniciar análisis' : 'Agente inactivo'}
+      {/* ── Control de Lote + Historial ── */}
+      {!loadingHistory && (
+        <div className="card !p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-oratioo-dark flex items-center gap-2">
+              <List size={14} className="text-oratioo-purple" />
+              Control de Lote
+            </h3>
+            <div className="flex items-center gap-2">
+              <button onClick={handleResetLote} disabled={resetting}
+                className="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all disabled:opacity-40">
+                {resetting ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                Reset lote
               </button>
+            </div>
+          </div>
+
+          {/* Status message */}
+          {resetMsg.status && (
+            <div className={`mb-3 px-3 py-1.5 rounded-lg text-xs flex items-center gap-2 border ${
+              resetMsg.status === 'ok'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-red-50 text-red-700 border-red-200'
+            }`}>
+              {resetMsg.status === 'ok' ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
+              {resetMsg.text}
+            </div>
+          )}
+
+          {queueStats.total > 0 ? (
+            <>
+              {/* Barra de progreso */}
+              <div className="mb-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-oratioo-gray">Progreso</span>
+                  <span className="text-xs font-semibold text-oratioo-dark">
+                    {queueStats.total > 0 ? Math.round(((queueStats.completados + queueStats.errores) / queueStats.total) * 100) : 0}%
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-oratioo-border rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${queueStats.total > 0 ? Math.round(((queueStats.completados + queueStats.errores) / queueStats.total) * 100) : 0}%`,
+                      background: queueStats.errores > 0
+                        ? `linear-gradient(90deg, #10b981 ${queueStats.total > 0 ? Math.round((queueStats.completados / queueStats.total) * 100) : 0}%, #ef4444 ${queueStats.total > 0 ? Math.round(((queueStats.completados + queueStats.errores) / queueStats.total) * 100) : 0}%)`
+                        : '#10b981'
+                    }}
+                  />
+                </div>
+                <div className="flex justify-between mt-0.5">
+                  <span className="text-[9px] text-emerald-600">{queueStats.completados} completados</span>
+                  {queueStats.errores > 0 && <span className="text-[9px] text-red-500">{queueStats.errores} errores</span>}
+                </div>
+              </div>
+
+              {/* Counters */}
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { icon: Database, label: 'Total', value: queueStats.total, color: 'text-oratioo-dark bg-oratioo-light' },
+                  { icon: Clock, label: 'Pendientes', value: queueStats.pendientes, color: 'text-amber-600 bg-amber-50' },
+                  { icon: CheckCircle2, label: 'Completados', value: queueStats.completados, color: 'text-emerald-600 bg-emerald-50' },
+                  { icon: AlertTriangle, label: 'Errores', value: queueStats.errores, color: 'text-red-500 bg-red-50' },
+                ].map((s, i) => (
+                  <div key={i} className={`rounded-lg px-3 py-2 text-center ${s.color.split(' ').slice(1).join(' ')}`}>
+                    <p className={`text-lg font-bold ${s.color.split(' ')[0]}`}>{s.value.toLocaleString()}</p>
+                    <p className="text-[9px] text-oratioo-gray">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-oratioo-gray text-center py-4">
+              No hay DNIs en cola. Haz clic en <strong>Reset lote</strong> para cargar desde <code className="bg-oratioo-light px-1 rounded">numeros.txt</code>
+            </p>
+          )}
+
+          {/* ── Cargas recientes ── */}
+          <div className="border-t border-oratioo-border pt-3 mt-3">
+            <h4 className="text-[10px] font-semibold text-oratioo-gray uppercase tracking-wider mb-2">Últimas cargas</h4>
+            {loadingHistory ? (
+              <div className="flex items-center justify-center py-3">
+                <Loader2 size={14} className="animate-spin text-oratioo-gray" />
+              </div>
+            ) : uploaded.length === 0 ? (
+              <p className="text-[11px] text-oratioo-gray text-center py-2">Aún no hay cargas</p>
+            ) : (
+              <div className="space-y-1">
+                {uploaded.slice(0, 5).map(d => {
+                  const completo = (d.procesados || 0) >= (d.total_dnis || 0) && (d.total_dnis || 0) > 0
+                  return (
+                    <div key={d.id} className="flex items-center justify-between bg-oratioo-light/30 rounded-lg px-3 py-1.5 border border-oratioo-border">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${completo ? 'bg-emerald-400' : d.estado === 'analizando' ? 'bg-purple-400 animate-pulse' : 'bg-amber-400'}`} />
+                        <span className="text-[11px] text-oratioo-dark truncate max-w-[200px]">{d.nombre_archivo}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-oratioo-gray flex-shrink-0">
+                        <span>{d.total_dnis || 0} DNIs</span>
+                        <span>·</span>
+                        <span className={completo ? 'text-emerald-600 font-medium' : d.estado === 'analizando' ? 'text-purple-600 font-medium' : 'text-amber-600'}>
+                          {completo ? 'Completo' : d.estado === 'analizando' ? 'Analizando' : 'Pendiente'}
+                        </span>
+                        <button onClick={() => handleDeleteDocument(d)}
+                          className="p-0.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title="Eliminar">
+                          <Trash2 size={10} />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </div>
         </div>
+      )}
 
-
-
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-oratioo-border">
-                <th className="table-header px-3 py-2">Día</th>
-                <th className="table-header px-3 py-2">Documentos</th>
-                <th className="table-header px-3 py-2">Total DNIs</th>
-                <th className="table-header px-3 py-2">Estado</th>
-                <th className="table-header px-3 py-2">Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loadingHistory ? (
-                <tr><td colSpan={5} className="text-center py-8"><Loader2 size={20} className="animate-spin text-oratioo-purple mx-auto" /></td></tr>
-              ) : uploaded.length === 0 ? (
-                <tr><td colSpan={5} className="text-center py-8 text-oratioo-gray text-sm">Aún no hay cargas registradas</td></tr>
-              ) : (
-                (() => {
-                  const hoy = hoyLocal()
-                  const grupos = {}
-                  for (const h of uploaded) {
-                    const dia = utcToLocalDate(h.created_at)
-                    if (soloHoy && dia !== hoy) continue
-                    if (!grupos[dia]) grupos[dia] = { dia, docs: [], totalDnis: 0, completados: 0, analizando: 0, pendientes: 0 }
-                    grupos[dia].docs.push(h)
-                    grupos[dia].totalDnis += (h.total_dnis || 0)
-                    const proc = (h.procesados || 0)
-                    const tot = (h.total_dnis || 0)
-                    if (proc >= tot && tot > 0) grupos[dia].completados++
-                    else if (h.estado === 'analizando') grupos[dia].analizando++
-                    else grupos[dia].pendientes++
-                  }
-                  return Object.values(grupos).sort((a, b) => b.dia.localeCompare(a.dia)).map(grupo => {
-                    const expandido = expandedDay === grupo.dia
-                    const detalles = dayDetails[grupo.dia] || {}
-                    const todoCompletado = grupo.completados === grupo.docs.length
-                    const algunAnalizando = grupo.analizando > 0
-                    return (
-                      <React.Fragment key={grupo.dia}>
-                        <tr
-                          onClick={() => toggleDay(grupo.dia, grupo.docs)}
-                          className="border-b border-oratioo-border hover:bg-oratioo-light/30 cursor-pointer">
-                          <td className="table-cell !py-2 text-xs font-medium flex items-center gap-2">
-                            {expandido ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            {new Date(grupo.dia + 'T12:00:00').toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-                          </td>
-                          <td className="table-cell !py-2 text-xs">{grupo.docs.length}</td>
-                          <td className="table-cell !py-2 text-xs">{grupo.totalDnis.toLocaleString()}</td>
-                          <td className="table-cell !py-2">
-                            {algunAnalizando ? (
-                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs bg-purple-50 text-purple-700 border border-purple-200">
-                                <Loader2 size={10} className="animate-spin" /> {grupo.analizando} analizando
-                              </span>
-                            ) : todoCompletado ? (
-                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                <CheckCircle2 size={10} /> Completo
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs bg-blue-50 text-blue-600 border border-blue-200">
-                                <Database size={10} /> {grupo.pendientes} pendientes
-                              </span>
-                            )}
-                          </td>
-                          <td className="table-cell !py-2">
-                            <span className="text-xs text-oratioo-gray">Click para ver</span>
-                          </td>
-                        </tr>
-                        {expandido && (
-                          <tr>
-                            <td colSpan={5} className="!p-0 !border-0">
-                              <div className="bg-oratioo-light/30 px-6 py-3">
-                                <table className="w-full">
-                                  <thead>
-                                    <tr className="border-b border-oratioo-border">
-                                      <th className="table-header px-2 py-1 text-[10px]">Archivo</th>
-                                      <th className="table-header px-2 py-1 text-[10px]">Total DNIs</th>
-                                      <th className="table-header px-2 py-1 text-[10px]">Analizados</th>
-                                      <th className="table-header px-2 py-1 text-[10px]">Errores</th>
-                                      <th className="table-header px-2 py-1 text-[10px]">Estado</th>
-                                      <th className="table-header px-2 py-1 text-[10px]">Eliminar</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {grupo.docs.map(d => {
-                                      const det = detalles[d.id]
-                                      const proc = det ? det.procesados : (d.procesados || 0)
-                                      const err = det ? det.errores : 0
-                                      const tot = det ? det.total : (d.total_dnis || 0)
-                                      const completo = proc >= tot && tot > 0
-                                      return (
-                                        <tr key={d.id} className="border-b border-oratioo-border/50 hover:bg-white/50">
-                                          <td className="px-2 py-1.5 text-xs text-oratioo-dark">{d.nombre_archivo}</td>
-                                          <td className="px-2 py-1.5 text-xs text-oratioo-gray">{tot}</td>
-                                          <td className="px-2 py-1.5 text-xs text-emerald-600">{proc}</td>
-                                          <td className="px-2 py-1.5 text-xs text-red-500">{err}</td>
-                                          <td className="px-2 py-1.5">
-                                            {d.estado === 'analizando' ? (
-                                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] bg-purple-50 text-purple-700 border border-purple-200">
-                                                <Loader2 size={8} className="animate-spin" /> Analizando
-                                              </span>
-                                            ) : completo ? (
-                                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                                <CheckCircle2 size={8} /> Completo
-                                              </span>
-                                            ) : (
-                                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] bg-blue-50 text-blue-600 border border-blue-200">
-                                                <Database size={8} /> Pendiente
-                                              </span>
-                                            )}
-                                          </td>
-                                          <td className="px-2 py-1.5">
-                                            {deletingId === d.id ? (
-                                              <Loader2 size={10} className="animate-spin text-red-400" />
-                                            ) : (
-                                              <button onClick={(e) => { e.stopPropagation(); handleDeleteDocument(d) }}
-                                                className="text-xs text-red-500 hover:text-red-700 p-1 rounded-lg transition-all"
-                                                title="Eliminar lote">
-                                                <Trash2 size={12} />
-                                              </button>
-                                            )}
-                                          </td>
-                                        </tr>
-                                      )
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    )
-                  })
-                })()
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   )
 }

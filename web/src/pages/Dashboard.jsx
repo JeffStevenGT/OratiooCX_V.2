@@ -205,7 +205,7 @@ export default function Dashboard() {
       {/* Datos del Bot */}
       <div className="flex items-center gap-2 mb-1">
         <div className="h-3 w-3 rounded-full bg-[#0a6ea9]"></div>
-        <span className="text-[10px] text-[#7c757c] uppercase tracking-wider font-semibold">Datos del Bot</span>
+        <span className="text-[10px] text-[#7c757c] uppercase tracking-wider font-semibold">Datos de la App</span>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard title="Total Leads" value={stats.total.toLocaleString()} subtitle="Leads procesados" icon={Users} color="indigo" />

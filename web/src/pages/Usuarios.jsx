@@ -379,16 +379,17 @@ export default function Usuarios() {
   }
 
   // Guardar (crear o editar)
-  const handleSave = async function () {
+    const handleSave = async function () {
     if (!form.nombre.trim()) { setError('El nombre es requerido'); return }
     if (myRol !== 'supervisor' && !form.equipo) { setError('El equipo/pais es requerido'); return }
 
     if (editingId) {
       // --- EDITAR usuario existente ---
+      if (!form.usuario.trim()) { setError('El usuario es requerido'); return }
       const obj = {
-        usuario: form.email.trim().split('@')[0],
+        usuario: form.usuario.trim(),
         nombre: form.nombre.trim(),
-        email: form.email.trim(),
+        email: form.email.trim() || null,
         rol: form.rol,
         equipo: form.equipo,
         grupo: form.grupo.trim(),
@@ -408,7 +409,7 @@ export default function Usuarios() {
       if (!form.email.trim()) { setError('El email es requerido'); return }
       if (!form.password.trim()) { setError('La contrasena es requerida'); return }
 
-      // Validar duplicado por email
+      // Validar duplicado por email en usuarios
       try {
         const { data: dupEmail } = await supabase
           .from(TABLA_USUARIOS)
@@ -416,12 +417,12 @@ export default function Usuarios() {
           .eq('email', form.email.trim())
           .maybeSingle()
         if (dupEmail) { setError('El email ya esta registrado'); return }
-      } catch (_) { /* ignorar error de consulta */ }
+      } catch (_) { /* ignorar */ }
 
-      // Generar usuario desde email (parte antes del @)
+      // Generar usuario desde email
       const usuarioGenerado = form.email.trim().split('@')[0]
       if (!usuarioGenerado) { setError('Email invalido'); return }
-      
+
       // Validar duplicado por usuario
       try {
         const { data: dupUser } = await supabase
@@ -429,55 +430,62 @@ export default function Usuarios() {
           .select('id')
           .eq('usuario', usuarioGenerado)
           .maybeSingle()
-        if (dupUser) { setError('El usuario \"' + usuarioGenerado + '\" ya existe. Usa otro email.'); return }
-      } catch (_) { /* ignorar error de consulta */ }
+        if (dupUser) { setError('El usuario "' + usuarioGenerado + '" ya existe. Usa otro email.'); return }
+      } catch (_) { /* ignorar */ }
 
-      // 1. Crear cuenta en Supabase Auth
+      // Insertar primero en tabla usuarios (para tener registro aunque Auth falle)
+      let nuevoId = null
+      try {
+        const { data: insertData, error: insertError } = await supabase
+          .from(TABLA_USUARIOS)
+          .insert({
+            usuario: usuarioGenerado,
+            nombre: form.nombre.trim(),
+            email: form.email.trim(),
+            password: form.password,
+            rol: form.rol,
+            equipo: form.equipo,
+            grupo: form.grupo.trim(),
+            supervisor_id: form.supervisor_id !== '' ? Number(form.supervisor_id) : null,
+            activo: true,
+            ultima_conexion: null,
+          })
+          .select('id')
+          .single()
+        if (insertError) {
+          setError('Error al guardar: ' + insertError.message)
+          return
+        }
+        nuevoId = insertData?.id
+      } catch (e) {
+        setError('Error de conexion al guardar'); return
+      }
+
+      // Crear cuenta en Supabase Auth para login por email/password
+      // NOTA: Si el proyecto tiene "Confirm email" = ON en Supabase,
+      // el usuario recibira un email de confirmacion antes de poder loguearse.
+      // Recomendacion: Auth > Settings > Disable "Confirm email"
       try {
         const { error: authError } = await supabase.auth.signUp({
           email: form.email.trim(),
           password: form.password,
+          options: { data: { usuario_id: nuevoId } }
         })
         if (authError) {
-          if (authError.message.toLowerCase().includes('already registered') ||
-              authError.message.toLowerCase().includes('already exists')) {
-            setError('El email ya esta registrado en el sistema de autenticacion')
-          } else {
-            setError('Error al crear cuenta de acceso: ' + authError.message)
-          }
+          console.warn('Auth signUp fallo:', authError.message)
+          setError('Usuario creado en BD. Pero fallo crear acceso por email. Contacta al admin.')
           return
         }
       } catch (e) {
-        setError('Error de conexion al crear cuenta de acceso'); return
-      }
-
-      // 2. Insertar en la tabla usuarios (sin id, lo genera Supabase)
-      try {
-        const { error: insertError } = await supabase.from(TABLA_USUARIOS).insert({
-          usuario: usuarioGenerado,
-          nombre: form.nombre.trim(),
-          email: form.email.trim(),
-          rol: form.rol,
-          equipo: form.equipo,
-          grupo: form.grupo.trim(),
-          supervisor_id: form.supervisor_id !== '' ? Number(form.supervisor_id) : null,
-          activo: true,
-          ultima_conexion: null,
-        })
-        if (insertError) {
-          setError('Error al guardar en la base de datos: ' + insertError.message)
-          return
-        }
-      } catch (e) {
-        setError('Error de conexion al guardar'); return
+        setError('Advertencia: usuario guardado en BD pero fallo crear acceso. Reintenta.')
+        return
       }
     }
 
     setShowModal(false)
     refresh()
   }
-
-  // Cambiar estado activo/inactivo
+// Cambiar estado activo/inactivo
   const toggleEstado = async function (id) {
     const user = usuarios.find(u => u.id === id)
     if (!user) return
@@ -1079,22 +1087,6 @@ export default function Usuarios() {
                   placeholder="ej: Trujillo, Lima, Madrid"
                 />
               </div>
-              )}
-
-              {myRol !== 'supervisor' && (
-              <div>
-                <label className="block text-xs text-[#7c757c] font-medium mb-1">
-                  Grupo
-                </label>
-                <input
-                  type="text"
-                  value={form.grupo}
-                  onChange={function (e) { setForm({ ...form, grupo: e.target.value }) }}
-                  className="input-field text-sm"
-                  placeholder="Ej: Team Alpha"
-                />
-              </div>
-              )}
 
               { /* Rol */ }
               <div>
@@ -1108,8 +1100,7 @@ export default function Usuarios() {
                   className="input-field text-sm"
                 >
                   {ROLES.filter(function (r) {
-                    const s = JSON.parse(localStorage.getItem('oratioo_session') || '{}')
-                    return s.rol === 'supervisor' ? r.value === 'asesor' : true
+                    return myRol === 'supervisor' ? r.value === 'asesor' : true
                   }).map(function (r) {
                     return (
                       <option key={r.value} value={r.value}>{r.label}</option>

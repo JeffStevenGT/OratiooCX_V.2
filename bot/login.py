@@ -196,16 +196,25 @@ def abrir_nuevo_acto_comercial(page: Page):
 # ── Extracción de datos del cliente ────────────────
 
 def _hay_toast_error(page) -> bool:
-    """Detecta si el toast 'No se han podido recuperar campañas' está visible.
-    NO lo cierra — solo detecta."""
+    """Detecta y cierra el toast de error de Orange.
+    Cierra el toast automaticamente si esta presente
+    para que no bloquee el boton Cambiar cliente."""
     try:
         toast = page.locator(".message-relevant.error")
         if toast.count() == 0:
             return False
-        return toast.first.is_visible(timeout=1000)
+        if toast.first.is_visible(timeout=1000):
+            try:
+                close_btn = toast.locator(".btn-close")
+                if close_btn.count() > 0:
+                    close_btn.first.click(force=True, timeout=2000)
+                    page.wait_for_timeout(500)
+            except:
+                pass
+            return True
     except Exception:
-        return False
-
+        pass
+    return False
 
 def _abrir_cambiar_cliente(page):
     """Hace clic en Cambiar cliente para dejar el modal listo para el siguiente DNI."""
@@ -437,7 +446,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     tiene_rm_heading = False
                     try:
                         heading_text = bloque.locator(".client-tariff-heading").first.inner_text()
-                        tiene_rm_heading = "renove" in heading_text.lower()
+                        tiene_rm_heading = bool(re.search(r'\b(Renove|MIXTO)\b', heading_text, re.IGNORECASE))
                     except Exception:
                         pass
 
@@ -473,7 +482,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                                             if txt_el.count() > 0:
                                                 txt = txt_el.first.inner_text().strip()
                                                 # Si contiene RENOVE/MIXTO/MULTI, es la card que buscamos
-                                                if "renove" in txt.upper() or "MIXTO" in txt.upper() or "MULTIDISPOSITIVO" in txt.upper():
+                                                if re.search(r'\b(RENOVE|MIXTO|MULTIDISPOSITIVO)\b', txt.upper()):
                                                     texto_card = txt
                                                     break
                                                 # Si no encontramos con filtro, guardar la primera y seguir buscando

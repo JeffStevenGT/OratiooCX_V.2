@@ -39,7 +39,6 @@ WORKER_ID = int(os.getenv("WORKER_ID", "0"))
 MAQUINA = os.getenv("WORKER_MAQUINA", "local")
 ORANGE_URL = "https://pangea.orange.es/"
 MAX_DNIS = int(os.getenv("MAX_DNIS_POR_WORKER", "0"))
-PAUSA_MS = random.randint(2000, 4000)
 
 # Proxy desde env (asignado por coordinator)
 PROXY_CONFIG = None
@@ -536,7 +535,24 @@ def main():
         log("⏹  Detenido por señal")
         detener = True
     finally:
-        log("[CLEANUP] Worker finalizado. Browser queda ABIERTO (cierra Pangea manualmente).")
+        log("[CLEANUP] Cerrando Playwright y browser...")
+        try:
+            page.close()
+        except:
+            pass
+        try:
+            context.close()
+        except:
+            pass
+        try:
+            browser.close()
+        except:
+            pass
+        try:
+            pw.stop()
+        except:
+            pass
+        log("[CLEANUP] Browser cerrado correctamente")
 
     log(f"Resumen -> Procesados: [OK] {procesados} | [ERR] {errores}")
 

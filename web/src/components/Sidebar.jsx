@@ -34,7 +34,7 @@ const GROUPS = [
       {
         to: "/configurar-bot",
         icon: Settings,
-        label: "Configurar Bot",
+        label: "Configurar App",
         badge: null,
       },
       {
@@ -304,13 +304,13 @@ export default function Sidebar({ onLogout }) {
                   parametros: { asesor_id: ses.id || '0', proxy_asignado: proxyAsignado },
                   estado: 'pendiente',
                 })
-                alert('Comando enviado a ' + destino + '. El bot abrirá Orange con tu proxy asignado.')
+                alert('Comando enviado a ' + destino + '. La app abrirá Orange con tu proxy asignado.')
               } catch (e) {
                 alert('Error: ' + e.message)
               }
             }}
             className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg transition-all duration-200 text-emerald-400 hover:text-white hover:bg-emerald-600"
-            title="Abrir Orange desde el bot"
+            title="Abrir Orange desde la app"
           >
             <Globe size={18} className="shrink-0" />
             {!collapsed && (
