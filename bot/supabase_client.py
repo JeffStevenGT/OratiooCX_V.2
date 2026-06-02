@@ -1,15 +1,15 @@
-﻿"""
-supabase_client.py ÔÇö Comunicaci├│n directa con Supabase REST API
+"""
+supabase_client.py — Comunicación directa con Supabase REST API
 ================================================================
 El bot escribe directo a Supabase usando service_role key.
 El estado del DNI se guarda dentro de atributos_dinamicos (JSONB),
 no como columna separada.
 
 Estados de un DNI (dentro de atributos_dinamicos):
-  pendiente     ÔåÆ espera ser procesado
-  en_progreso   ÔåÆ un worker lo est├í procesando ahora
-  completado    ÔåÆ procesado exitosamente
-  error         ÔåÆ fall├│ despu├®s de reintentos
+  pendiente     → espera ser procesado
+  en_progreso   → un worker lo está procesando ahora
+  completado    → procesado exitosamente
+  error         → falló después de reintentos
 """
 
 import os
@@ -47,14 +47,14 @@ def _api(method: str, path: str, body: dict = None) -> list | dict:
             return []
     except HTTPError as e:
         err_body = e.read().decode()[:200] if e.fp else str(e)
-        print(f"  [Supabase] {method} {path} ÔåÆ {e.code}: {err_body}")
+        print(f"  [Supabase] {method} {path} → {e.code}: {err_body}")
         return []
     except Exception as e:
-        print(f"  [Supabase] Error de conexi├│n: {e}")
+        print(f"  [Supabase] Error de conexión: {e}")
         return []
 
 
-# ÔöÇÔöÇ GUARDAR RESULTADO ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── GUARDAR RESULTADO ─────────────────────────────
 
 def guardar_resultado(dni: str, datos: dict, estado: str = "completado"):
     """
@@ -62,17 +62,17 @@ def guardar_resultado(dni: str, datos: dict, estado: str = "completado"):
     - Si el DNI ya existe en la BD, lo actualiza (PATCH por id)
     - Si no existe, lo inserta (POST)
 
-    ÔÜá´©Å Hace MERGE completo de atributos_dinamicos para NO perder
+    ⚠️ Hace MERGE completo de atributos_dinamicos para NO perder
     pipeline, documento_id, datos_basicos, etc. de cargas anteriores.
 
     Posibles estados:
       - completado  -> procesado exitosamente
       - no_cliente  -> DNI no encontrado en Orange
-      - error       -> fallo t├®cnico
+      - error       -> fallo técnico
     """
     ahora = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
-    # ÔöÇÔöÇ UPSERT: buscar si el DNI ya existe ÔöÇÔöÇ
+    # ── UPSERT: buscar si el DNI ya existe ──
     existentes = _api("GET", f"/lineas?select=id,atributos_dinamicos&dni=eq.{dni}&limit=1&order=id.desc")
 
     # Merge de atributos_dinamicos previos
@@ -112,7 +112,7 @@ def guardar_resultado(dni: str, datos: dict, estado: str = "completado"):
     else:
         _api("POST", "/lineas", fila)
 
-    icono = "Ô£à" if estado == "completado" else "ÔØî" if estado == "no_cliente" else "ÔÜá"
+    icono = "✅" if estado == "completado" else "❌" if estado == "no_cliente" else "⚠"
     accion = "actualizado" if (existentes and len(existentes) > 0) else "insertado"
     print(f"  [Supabase] {icono} {dni} {accion} ({estado})")
 
@@ -141,7 +141,7 @@ def insertar_dnis(dnis: list[str], semana: str = ""):
     return len(rows)
 
 
-# ÔöÇÔöÇ CONSULTAS ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── CONSULTAS ─────────────────────────────────────
 
 def contar_estados(semana: str = "") -> dict:
     """Retorna conteo de DNIs por estado (desde atributos_dinamicos)."""

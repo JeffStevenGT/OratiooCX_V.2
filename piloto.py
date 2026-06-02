@@ -64,7 +64,24 @@ def dump_todas_pestanas(page, wlog):
                 etiq = [h.inner_text().strip() for h in heading.locator("span.label").all()]
             except:
                 etiq = []
-            wlog(f"\n  📱 Línea: {num_linea}  {etiq}")
+            wlog(f"\n  == Linea: {num_linea}  {etiq}")
+
+            # Datos de linea (status, consumo, permanencia, VAP)
+            try:
+                ls = bloque.locator("ocs-line-status").inner_text().strip()
+                wlog(f"    [STATUS] {ls[:200]}")
+            except:
+                pass
+            try:
+                ld = bloque.locator("ocs-line-details").inner_text().strip()
+                wlog(f"    [DETAILS] {ld[:400]}")
+            except:
+                pass
+            try:
+                plan = bloque.locator(".line-section").inner_text().strip()
+                wlog(f"    [PLAN] {plan[:200]}")
+            except:
+                pass
 
             tab_bar = bloque.locator(".client-tariff-section-navs")
             if tab_bar.count() > 0:
@@ -99,6 +116,17 @@ def dump_todas_pestanas(page, wlog):
             pagina += 1
         else:
             hay_mas = False
+
+    # Secciones inferiores (permanencias, descuentos, facturas, consumo)
+    wlog('')
+    wlog('  [SECCIONES INFERIORES]')
+    for nombre, sel in [('PERMANENCIAS','.mod-permanency-chart'),('DESCUENTOS','.mod-promotions-and-discounts'),('FACTURAS','.mod-invoice-histogram-main'),('CONSUMO GRUPO','group-consumption-fed')]:
+        try:
+            txt = page.locator(sel).inner_text().strip()[:600]
+            if txt:
+                wlog(f'  [{nombre}] {txt}')
+        except:
+            pass
 
 
 def procesar_worker(dnis_chunk, worker_id, proxy_conf):

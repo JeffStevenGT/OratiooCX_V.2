@@ -1,12 +1,12 @@
-﻿"""
-reset_queue.py ÔÇö Limpia la cola y el historial de cargas
+"""
+reset_queue.py — Limpia la cola y el historial de cargas
 ==========================================================
 Borra TODOS los registros de lineas y documentos en Supabase.
-NO recarga nada ÔÇö los DNIs se suben desde la web.
+NO recarga nada — los DNIs se suben desde la web.
 
 USO:
   python reset_queue.py              # Reset completo
-  python reset_queue.py --dry-run    # Solo mostrar qu├® har├¡a
+  python reset_queue.py --dry-run    # Solo mostrar qué haría
 """
 
 import os
@@ -56,7 +56,7 @@ def _api(method, path, body=None):
 def reset(dry_run: bool = False):
     """Limpia lineas y documentos. No recarga nada."""
     if dry_run:
-        log("[DRY-RUN] Se borrar├¡an lineas y documentos")
+        log("[DRY-RUN] Se borrarían lineas y documentos")
         return
 
     # Borrar lineas

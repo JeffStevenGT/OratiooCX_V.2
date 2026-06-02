@@ -1,4 +1,4 @@
-﻿"""Cancel pending abrir_navegador commands"""
+"""Cancel pending abrir_navegador commands"""
 from dotenv import load_dotenv
 import os, json
 load_dotenv()

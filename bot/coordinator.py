@@ -1,11 +1,11 @@
-﻿"""
-coordinator.py ÔÇö Orquestador multi-m├íquina de workers
+"""
+coordinator.py — Orquestador multi-máquina de workers
 ======================================================
 Gestiona workers en paralelo, asigna proxies exclusivos (1:1),
 reporta estado a Supabase, y permite control remoto desde la Web UI.
 
 FLUJO:
-  1. Lee configuraci├│n de Supabase (tabla config_bots)
+  1. Lee configuración de Supabase (tabla config_bots)
   2. Lee proxies disponibles de proxies.txt
   3. Asigna 1 proxy exclusivo por worker
   4. Lanza N workers como procesos independientes
@@ -14,7 +14,7 @@ FLUJO:
   7. Web UI ve el estado en tiempo real
 
 USO:
-  python coordinator.py                          # Modo monitoreo ÔÇö control desde la Web UI
+  python coordinator.py                          # Modo monitoreo — control desde la Web UI
   python coordinator.py --workers 5              # Forzar 5 workers (modo directo)
   python coordinator.py --workers 0              # Solo monitorear (igual que sin args)
 """
@@ -30,12 +30,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 from datetime import datetime
 
-# ÔöÇÔöÇ Pause/Resume en Windows (via kernel32) ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── Pause/Resume en Windows (via kernel32) ───────
 if sys.platform == "win32":
     import ctypes
     from ctypes import wintypes
     kernel32 = ctypes.windll.kernel32
-    # Procesos hijo no heredan el handle autom├íticamente, obtenemos por PID
+    # Procesos hijo no heredan el handle automáticamente, obtenemos por PID
     _OpenProcess = kernel32.OpenProcess
     _OpenProcess.restype = wintypes.HANDLE
     _OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
@@ -48,7 +48,7 @@ if sys.platform == "win32":
         """Suspende todos los hilos de un proceso en Windows."""
         h = _OpenProcess(PROCESS_SUSPEND_RESUME, False, pid)
         if h:
-            # Suspender todos los hilos v├¡a NtSuspendProcess (Windows 7+)
+            # Suspender todos los hilos vía NtSuspendProcess (Windows 7+)
             try:
                 ntdll = ctypes.windll.ntdll
                 ntdll.NtSuspendProcess(h)
@@ -72,7 +72,7 @@ else:
 
 load_dotenv()
 
-# ÔöÇÔöÇ Config ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── Config ────────────────────────────────────────
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
@@ -84,7 +84,7 @@ HEARTBEAT_INTERVAL = 15  # segundos (la web espera < 20s)
 REFRESH_CONFIG_INTERVAL = 60  # segundos
 
 
-# ÔöÇÔöÇ Estado global ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── Estado global ─────────────────────────────────
 
 workers_activos = {}  # {worker_id: {"process": Popen, "proxy": dict, "started_at": float, ...}}
 navegadores_asesores = {}  # {asesor_id: {"process": Popen, "proxy": dict, "started_at": float}}
@@ -95,10 +95,10 @@ lock = threading.Lock()
 _PROXIES_CACHE = None
 
 
-# ÔöÇÔöÇ Proxies ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── Proxies ───────────────────────────────────────
 
 def _parsear_proxy(linea: str) -> dict | None:
-    """Parsea una l├¡nea de proxies.txt. Formato: ip:puerto:usuario:contrase├▒a"""
+    """Parsea una línea de proxies.txt. Formato: ip:puerto:usuario:contraseña"""
     linea = linea.strip()
     if not linea or linea.startswith("#"):
         return None
@@ -151,7 +151,7 @@ def asignar_proxies(proxies: list[dict], num_workers: int) -> list[dict]:
     return asignaciones
 
 
-# ÔöÇÔöÇ Comunicaci├│n con Supabase ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── Comunicación con Supabase ────────────────────
 
 def _api(method: str, path: str, body: dict = None) -> list | dict:
     """Llamada REST a Supabase."""
@@ -200,13 +200,13 @@ def reportar_estado(workers_info: list[dict]):
         _api("POST", "/maquinas", body)
 
 
-# ÔöÇÔöÇ Lanzar workers ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── Lanzar workers ────────────────────────────────
 
 def lanzar_worker(worker_id: int, proxy: dict | None) -> subprocess.Popen | None:
     """
     Lanza un worker.py como proceso independiente.
     Redirige stdout/stderr a logs/worker_{worker_id}.log.
-    Retorna el objeto Popen o None si fall├│.
+    Retorna el objeto Popen o None si falló.
     """
     log_dir = Path(__file__).parent / "logs"
     log_dir.mkdir(exist_ok=True)
@@ -250,7 +250,7 @@ def detener_todos_los_workers():
         workers_activos.clear()
 
 
-# ÔöÇÔöÇ Heartbeat ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── Heartbeat ─────────────────────────────────────
 
 def heartbeat_loop():
     """Hilo que reporta estado a Supabase cada N segundos.
@@ -275,7 +275,7 @@ def heartbeat_loop():
 
 
 def monitor_workers_loop():
-    """Hilo que verifica workers ca├¡dos y procesa comandos."""
+    """Hilo que verifica workers caídos y procesa comandos."""
     global detener
     while not detener:
         time.sleep(5)
@@ -285,7 +285,7 @@ def monitor_workers_loop():
                 proc = winfo.get("process")
                 if proc and proc.poll() is not None:
                     exit_code = proc.returncode
-                    print(f"[Coordinator] [WARN] Worker #{wid} termin├│ (c├│digo: {exit_code})")
+                    print(f"[Coordinator] [WARN] Worker #{wid} terminó (código: {exit_code})")
                     muertos.append(wid)
             for wid in muertos:
                 del workers_activos[wid]
@@ -310,13 +310,13 @@ def monitor_workers_loop():
                 elif accion == "iniciar_workers":
                     print(f"[Coordinator] [CMD] Iniciando workers desde cola...")
                     try:
-                        # Leer config de m├íquina actual (default 3 si no configurado)
+                        # Leer config de máquina actual (default 3 si no configurado)
                         maq = _api("GET", f"/maquinas?nombre=eq.{MAQUINA_NOMBRE}&select=workers_config&limit=1")
                         num = int(maq[0].get("workers_config", 3)) if maq else 3
                         if num <= 0:
                             num = 3
 
-                        # Cargar proxies y lanzar workers (reutiliza l├│gica de main)
+                        # Cargar proxies y lanzar workers (reutiliza lógica de main)
                         todos_proxies = cargar_todos_los_proxies()
                         asignaciones = asignar_proxies(todos_proxies, num)
 
@@ -388,7 +388,7 @@ def monitor_workers_loop():
 
 
 
-# ÔöÇÔöÇ Main ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── Main ──────────────────────────────────────────
 
 def main():
     global detener
@@ -396,9 +396,9 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="Oratioo CX - Coordinador de Workers")
     parser.add_argument("--workers", type=int, default=None,
-                        help="N├║mero de workers a iniciar")
+                        help="Número de workers a iniciar")
     parser.add_argument("--max-dnis", type=int, default=0,
-                        help="M├íximo DNIs por worker (0 = ilimitado)")
+                        help="Máximo DNIs por worker (0 = ilimitado)")
     args = parser.parse_args()
 
     num_workers = args.workers
@@ -414,10 +414,10 @@ def main():
 
     print(f"[Coordinator] Iniciando con {num_workers} workers...")
 
-    # ÔöÇÔöÇ Cargar proxies ÔöÇÔöÇ
+    # ── Cargar proxies ──
     todos_proxies = cargar_todos_los_proxies()
 
-    # ÔöÇÔöÇ Lanzar workers (con stagger) ÔöÇÔöÇ
+    # ── Lanzar workers (con stagger) ──
     if num_workers > 0:
         for i in range(num_workers):
             proxy = todos_proxies[i % len(todos_proxies)] if todos_proxies else None
@@ -431,20 +431,20 @@ def main():
                     }
             time.sleep(2)  # Stagger
 
-    # ÔöÇÔöÇ Iniciar hilos de monitoreo ÔöÇÔöÇ
+    # ── Iniciar hilos de monitoreo ──
     hb_thread = threading.Thread(target=heartbeat_loop, daemon=True)
     hb_thread.start()
 
     monitor_thread = threading.Thread(target=monitor_workers_loop, daemon=True)
     monitor_thread.start()
 
-    # ÔöÇÔöÇ Manejar Ctrl+C con try/except (m├ís fiable en Windows) ÔöÇÔöÇ
+    # ── Manejar Ctrl+C con try/except (más fiable en Windows) ──
     print("[Coordinator] Presiona Ctrl+C para detener.")
     try:
         while not detener:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\n[Coordinator] ÔÅ╣  Deteniendo...")
+        print("\n[Coordinator] ⏹  Deteniendo...")
         detener = True
         detener_todos_los_workers()
         reportar_estado([])

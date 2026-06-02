@@ -1,4 +1,4 @@
-﻿const fs = require('fs');
+const fs = require('fs');
 const p = process.env.USERPROFILE + '/Desktop/Proyectos/Oratioo_CX/web/src/pages/Dashboard.jsx';
 let c = fs.readFileSync(p, 'utf8');
 

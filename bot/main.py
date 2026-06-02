@@ -1,12 +1,12 @@
-﻿"""
-main.py ÔÇö Bot Pangea Orange (Oratioo CX)
+"""
+main.py — Bot Pangea Orange (Oratioo CX)
 ===========================================
 FLUJO EXACTO del proyecto de referencia Bot_Orange:
   1. Login en Pangea Orange
-  2. Por cada n├║mero: buscar, extraer cabecera, l├¡neas con pesta├▒as
+  2. Por cada número: buscar, extraer cabecera, líneas con pestañas
   3. Guardar en Supabase (o local para prueba)
 
-DIFERENCIA CLAVE: busca por DOCUMENTO (DNI) en vez de tel├®fono.
+DIFERENCIA CLAVE: busca por DOCUMENTO (DNI) en vez de teléfono.
 """
 
 import os
@@ -32,7 +32,7 @@ from login import (
 
 load_dotenv()
 
-# ÔöÇÔöÇ Config ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── Config ────────────────────────────────────────
 
 ORANGE_URL = "https://pangea.orange.es/"
 USE_SUPABASE = os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_KEY")
@@ -42,7 +42,7 @@ PAUSA_ENTRE_DNIS_MS = random.randint(2000, 4000)
 LOCAL_DB_PATH = Path(__file__).parent / "resultados_local.json"
 
 
-# ÔöÇÔöÇ Utilidades ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── Utilidades ────────────────────────────────────
 
 def log(msg: str):
     t = time.strftime("%H:%M:%S")
@@ -54,8 +54,8 @@ def leer_dnis(archivo: str = None) -> list[str]:
     ruta = archivo or (Path(__file__).parent / "numeros.txt")
     if not ruta.exists():
         with open(ruta, "w") as f:
-            f.write("# Pon aqu├¡ los DNIs, uno por l├¡nea\n")
-        log(f"­ƒôØ Se cre├│ el archivo '{ruta.name}'. Pon los DNIs all├¡.")
+            f.write("# Pon aquí los DNIs, uno por línea\n")
+        log(f"📝 Se creó el archivo '{ruta.name}'. Pon los DNIs allí.")
         return []
     with open(ruta, "r") as f:
         return [line.strip() for line in f if line.strip() and not line.startswith("#")]
@@ -66,9 +66,9 @@ def guardar_resultados_local(resultados: list):
     try:
         with open(LOCAL_DB_PATH, "w", encoding="utf-8") as f:
             json.dump(resultados, f, ensure_ascii=False, indent=2)
-        log(f"­ƒÆ¥ Guardados {len(resultados)} resultados en {LOCAL_DB_PATH.name}")
+        log(f"💾 Guardados {len(resultados)} resultados en {LOCAL_DB_PATH.name}")
     except Exception as e:
-        log(f"ÔÜá´©Å Error guardando local: {e}")
+        log(f"⚠️ Error guardando local: {e}")
 
 
 def guardar_en_supabase(resultados: list):
@@ -79,7 +79,7 @@ def guardar_en_supabase(resultados: list):
             dni = fila.get("DNI", fila.get("Linea", "N/A"))
             es_cima = fila.get("es_cima", False)
 
-            # ÔöÇÔöÇ Detectar si NO ES CLIENTE ÔöÇÔöÇ
+            # ── Detectar si NO ES CLIENTE ──
             no_cliente = fila.get("Nombre", "") == "NO ES CLIENTE"
 
             if no_cliente:
@@ -107,7 +107,7 @@ def guardar_en_supabase(resultados: list):
                 }
                 guardar_resultado(dni, datos, estado="no_cliente")
             else:
-                # Empaquetar atributos din├ímicos
+                # Empaquetar atributos dinámicos
                 dinamicos = {
                     "cima": "SI" if es_cima else "NO",
                     "tiene_renove_mixto": fila.get("tiene_renove_mixto", False),
@@ -159,49 +159,49 @@ def guardar_en_supabase(resultados: list):
 
                 guardar_resultado(dni, datos, estado="completado")
 
-        log(f"Ôÿü´©Å  {len(resultados)} filas guardadas en Supabase")
+        log(f"☁️  {len(resultados)} filas guardadas en Supabase")
     except Exception as e:
-        log(f"ÔÜá´©Å Error guardando en Supabase: {e}")
+        log(f"⚠️ Error guardando en Supabase: {e}")
 
 
-# ÔöÇÔöÇ Main ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── Main ──────────────────────────────────────────
 
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Bot Pangea Orange - Oratioo CX")
     parser.add_argument("--local", action="store_true", help="Modo prueba sin Supabase")
     parser.add_argument("--dnis", type=str, default=None, help="Archivo con DNIs")
-    parser.add_argument("--max", type=int, default=0, help="M├íximo DNIs a procesar")
+    parser.add_argument("--max", type=int, default=0, help="Máximo DNIs a procesar")
     parser.add_argument("--headless", action="store_true", help="Modo headless")
     args = parser.parse_args()
 
-    # ÔöÇÔöÇ Cargar DNIs ÔöÇÔöÇ
+    # ── Cargar DNIs ──
     dnis = leer_dnis(args.dnis)
     if args.max > 0:
         dnis = dnis[:args.max]
 
     if not dnis:
-        log("ÔØî No hay DNIs para procesar. Ponlos en bot/numeros.txt")
+        log("❌ No hay DNIs para procesar. Ponlos en bot/numeros.txt")
         return
 
-    log(f"­ƒôä {len(dnis)} DNIs cargados")
+    log(f"📄 {len(dnis)} DNIs cargados")
     if args.local:
-        log("­ƒÅá Modo LOCAL (sin Supabase)")
+        log("🏠 Modo LOCAL (sin Supabase)")
     elif USE_SUPABASE:
-        log("Ôÿü´©Å  Modo SUPABASE")
+        log("☁️  Modo SUPABASE")
     else:
-        log("ÔÜá´©Å  Sin Supabase configurado. Usando --local impl├¡cito.")
+        log("⚠️  Sin Supabase configurado. Usando --local implícito.")
 
-    # ÔöÇÔöÇ Cargar proxies ÔöÇÔöÇ
+    # ── Cargar proxies ──
     proxies_disponibles = cargar_proxies()
     proxy_usar = proxy_aleatorio(proxies_disponibles) if proxies_disponibles else None
     if proxy_usar:
-        log(f"­ƒöî Proxy: {proxy_usar['server']}")
+        log(f"🔌 Proxy: {proxy_usar['server']}")
     else:
-        log("­ƒöî Sin proxy")
+        log("🔌 Sin proxy")
 
-    # ÔöÇÔöÇ Iniciar navegador ÔöÇÔöÇ
-    log("­ƒÜÇ Iniciando navegador...")
+    # ── Iniciar navegador ──
+    log("🚀 Iniciando navegador...")
 
     with sync_playwright() as p:
         browser, context = crear_contexto_espana(p, proxy_config=proxy_usar)
@@ -214,19 +214,19 @@ def main():
         page = context.new_page()
 
         try:
-            # ÔöÇÔöÇ Login ÔöÇÔöÇ
+            # ── Login ──
             page.goto(ORANGE_URL, timeout=90000)
             manejar_cookies_flexible(page)
             realizar_login(page)
             seleccionar_marca_orange(page)
             abrir_nuevo_acto_comercial(page)
 
-            # ÔöÇÔöÇ Procesar DNIs ÔöÇÔöÇ
+            # ── Procesar DNIs ──
             todos_resultados = []
 
             for idx, dni in enumerate(dnis):
                 log(f"\n{'='*50}")
-                log(f"­ƒôè CLIENTE [{idx+1}/{len(dnis)}]: {dni}")
+                log(f"📊 CLIENTE [{idx+1}/{len(dnis)}]: {dni}")
                 log(f"{'='*50}")
 
                 # Pausa aleatoria entre DNIs (como en el referencia)
@@ -236,27 +236,27 @@ def main():
                 filas_cliente = extraer_datos_cliente(page, dni, buscar_por_dni=True)
 
                 if not filas_cliente:
-                    log(f"  ÔÜá´©Å  {dni} sin resultados ÔÇö saltando")
+                    log(f"  ⚠️  {dni} sin resultados — saltando")
                     continue
 
-                # Guardar TODOS los resultados (clientes v├ílidos + no_clientes)
+                # Guardar TODOS los resultados (clientes válidos + no_clientes)
                 todos_resultados.extend(filas_cliente)
 
                 no_cliente = any(
                     f.get("Nombre") == "NO ES CLIENTE" for f in filas_cliente
                 )
                 if no_cliente:
-                    log(f"  ÔÅ¡´©Å  {dni} no es cliente ÔÇö guardando registro")
+                    log(f"  ⏭️  {dni} no es cliente — guardando registro")
 
-                log(f"Ô£à {len(filas_cliente)} l├¡neas extra├¡das")
+                log(f"✅ {len(filas_cliente)} líneas extraídas")
 
-                # Guardar seg├║n modo
+                # Guardar según modo
                 if args.local or not USE_SUPABASE:
                     guardar_resultados_local(todos_resultados)
                 else:
                     guardar_en_supabase(filas_cliente)
 
-                # Resumen parcial (solo datos v├ílidos)
+                # Resumen parcial (solo datos válidos)
                 filas_validas = [
                     f for f in filas_cliente
                     if f.get("Nombre") != "NO ES CLIENTE"
@@ -267,30 +267,30 @@ def main():
                 lineas_con_rm = sum(
                     1 for f in filas_validas if f.get("tiene_renove_mixto")
                 )
-                log(f"  ­ƒƒó CIMA: {lineas_con_cima} | Ô¡É Renove Mixto: {lineas_con_rm}")
+                log(f"  🟢 CIMA: {lineas_con_cima} | ⭐ Renove Mixto: {lineas_con_rm}")
 
-            # ÔöÇÔöÇ Resumen final ÔöÇÔöÇ
+            # ── Resumen final ──
             log(f"\n{'='*50}")
-            log(f"­ƒôè RESUMEN FINAL")
+            log(f"📊 RESUMEN FINAL")
             log(f"{'='*50}")
             log(f"  DNIs procesados: {len(dnis)}")
-            log(f"  Total filas (l├¡neas): {len(todos_resultados)}")
+            log(f"  Total filas (líneas): {len(todos_resultados)}")
 
             if todos_resultados:
                 total_cima = sum(1 for f in todos_resultados if f.get("es_cima"))
                 total_rm = sum(1 for f in todos_resultados if f.get("tiene_renove_mixto"))
-                log(f"  ­ƒƒó L├¡neas CIMA: {total_cima}")
-                log(f"  Ô¡É L├¡neas con Renove Mixto: {total_rm}")
+                log(f"  🟢 Líneas CIMA: {total_cima}")
+                log(f"  ⭐ Líneas con Renove Mixto: {total_rm}")
 
             if args.local or not USE_SUPABASE:
                 guardar_resultados_local(todos_resultados)
-                log(f"\n­ƒôü Resultados guardados en: {LOCAL_DB_PATH}")
+                log(f"\n📁 Resultados guardados en: {LOCAL_DB_PATH}")
 
-            log(f"\nÔ£à EXTRACCI├ôN FINALIZADA")
+            log(f"\n✅ EXTRACCIÓN FINALIZADA")
             input(">>> Presiona ENTER para cerrar el bot...")
 
         except Exception as e:
-            log(f"ÔØî Error cr├¡tico: {e}")
+            log(f"❌ Error crítico: {e}")
             import traceback
             traceback.print_exc()
             input(">>> Bot detenido por error. Presiona ENTER...")
@@ -298,7 +298,7 @@ def main():
         finally:
             browser.close()
 
-    log("­ƒÅü Bot finalizado")
+    log("🏁 Bot finalizado")
 
 
 if __name__ == "__main__":

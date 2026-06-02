@@ -1,4 +1,4 @@
-﻿"""Quick script to check Supabase state"""
+"""Quick script to check Supabase state"""
 import os, json
 from dotenv import load_dotenv
 load_dotenv()

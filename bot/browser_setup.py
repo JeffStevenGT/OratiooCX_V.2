@@ -1,5 +1,5 @@
-﻿"""
-browser_setup.py ÔÇö Configuraci├│n del navegador con proxy y geolocalizaci├│n Espa├▒a
+"""
+browser_setup.py — Configuración del navegador con proxy y geolocalización España
 =================================================================================
 Basado en el flujo del proyecto de referencia Bot_Orange.
 """
@@ -10,7 +10,7 @@ from pathlib import Path
 
 def crear_contexto_espana(playwright, proxy_config: dict = None):
     """
-    Crea browser + contexto con geolocalizaci├│n Espa├▒a.
+    Crea browser + contexto con geolocalización España.
 
     proxy_config: {
         "server": "http://ip:puerto" o "socks5://ip:puerto",
@@ -58,17 +58,17 @@ def crear_contexto_espana(playwright, proxy_config: dict = None):
 
 def parsear_proxy(linea: str) -> dict | None:
     """
-    Parsea una l├¡nea de proxies.txt.
+    Parsea una línea de proxies.txt.
     Formatos aceptados:
-      - ip:puerto:usuario:contrase├▒a
-      - http://usuario:contrase├▒a@ip:puerto
+      - ip:puerto:usuario:contraseña
+      - http://usuario:contraseña@ip:puerto
       - ip:puerto (sin auth)
     """
     linea = linea.strip()
     if not linea or linea.startswith("#"):
         return None
 
-    # Formato: ip:puerto:usuario:contrase├▒a
+    # Formato: ip:puerto:usuario:contraseña
     partes = linea.split(":")
     if len(partes) == 4:
         return {

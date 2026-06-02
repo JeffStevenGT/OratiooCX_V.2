@@ -1,10 +1,10 @@
-﻿"""
-login.py ÔÇö Automatizaci├│n de login en Pangea Orange
+"""
+login.py — Automatización de login en Pangea Orange
 =====================================================
 FLUJO EXACTO (basado en Bot_Orange de referencia):
   1. Aceptar cookies
   2. Login: input[name='temp-username'] + input[name='temp-password'] + #submit-button
-  3. Manejar "m├íximo de sesiones" si aparece
+  3. Manejar "máximo de sesiones" si aparece
   4. Seleccionar marca: a.orange-box
   5. Abrir nuevo acto comercial
 """
@@ -15,7 +15,7 @@ import re
 from playwright.sync_api import Page
 
 
-# ÔöÇÔöÇ Excepciones ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── Excepciones ────────────────────────────────────
 
 class LoginError(Exception):
     pass
@@ -27,7 +27,7 @@ class CriticalError(Exception):
     pass
 
 
-# ÔöÇÔöÇ Helpers ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── Helpers ────────────────────────────────────────
 
 def _escribir_como_humano(page: Page, selector: str, texto: str):
     """Escribe caracter por caracter con delay aleatorio + Tab para Angular."""
@@ -36,13 +36,13 @@ def _escribir_como_humano(page: Page, selector: str, texto: str):
     campo.fill("")
     for letra in texto:
         page.keyboard.type(letra, delay=random.randint(50, 150))
-    # CR├ìTICO: Tab para que Angular registre el cambio
+    # CRÍTICO: Tab para que Angular registre el cambio
     page.keyboard.press("Tab")
     page.wait_for_timeout(random.randint(300, 800))
 
 
 def _extraer_texto(page: Page, selector: str) -> str:
-    """Extrae texto de un elemento v├¡a evaluate para bypassear Angular."""
+    """Extrae texto de un elemento vía evaluate para bypassear Angular."""
     try:
         elemento = page.locator(selector).first
         texto = elemento.evaluate("el => el.textContent")
@@ -51,7 +51,7 @@ def _extraer_texto(page: Page, selector: str) -> str:
         return "N/A"
 
 
-# ÔöÇÔöÇ Login ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── Login ──────────────────────────────────────────
 
 def manejar_cookies_flexible(page: Page):
     """Acepta el banner de cookies."""
@@ -65,14 +65,14 @@ def manejar_cookies_flexible(page: Page):
 
 
 def manejar_maximo_sesiones(page: Page):
-    """Maneja el modal de 'm├íximo n├║mero de sesiones'."""
+    """Maneja el modal de 'máximo número de sesiones'."""
     try:
         if page.get_by_text(
-            "ya ha alcanzado el n├║mero m├íximo permitido de sesiones"
+            "ya ha alcanzado el número máximo permitido de sesiones"
         ).is_visible(timeout=5000):
             page.locator("button, input[type='submit']").first.click()
             page.wait_for_load_state("networkidle")
-            print("  [Login] Sesi├│n m├íxima cerrada")
+            print("  [Login] Sesión máxima cerrada")
     except Exception:
         pass
 
@@ -89,7 +89,7 @@ def realizar_login(page: Page, usuario: str = None, password: str = None):
     if not usuario or not password:
         raise LoginError("ORANGE_USER y ORANGE_PASS deben estar en .env")
 
-    print(f"  [Login] Iniciando sesi├│n...")
+    print(f"  [Login] Iniciando sesión...")
 
     try:
         # Esperar campo de usuario (temp-username es el input Angular)
@@ -97,10 +97,10 @@ def realizar_login(page: Page, usuario: str = None, password: str = None):
         _escribir_como_humano(page, "input[name='temp-username']", usuario)
         _escribir_como_humano(page, "input[name='temp-password']", password)
 
-        # Click en bot├│n de login
+        # Click en botón de login
         page.click("#submit-button")
 
-        # Manejar posible modal de m├íximo de sesiones
+        # Manejar posible modal de máximo de sesiones
         manejar_maximo_sesiones(page)
 
         # Esperar que aparezca el selector de marcas
@@ -126,17 +126,17 @@ def seleccionar_marca_orange(page: Page):
 
 
 def abrir_nuevo_acto_comercial(page: Page):
-    """Abre un nuevo acto comercial con m├║ltiples estrategias.
+    """Abre un nuevo acto comercial con múltiples estrategias.
     
     Estrategias (en orden):
     1. Click normal en 'Nuevo acto comercial' -> 'Tarifas' -> 'Crear'
     2. Force click si el elemento no es visible
-    3. Navegaci├│n directa a la URL de Tarifas (m├ís fiable)
+    3. Navegación directa a la URL de Tarifas (más fiable)
     """
     print("  [Login] Preparando entorno (nuevo acto comercial)...")
     
     def _click_tarifas():
-        # Primero abrir el men├║
+        # Primero abrir el menú
         nac = page.locator("button:has-text('Nuevo acto comercial')")
         nac.wait_for(state="visible", timeout=15000)
         nac.first.click()
@@ -186,14 +186,14 @@ def abrir_nuevo_acto_comercial(page: Page):
         page.wait_for_timeout(1500)
         btn_crear.click()
 
-        # Esperar que aparezca el bot├│n de cambiar cliente
+        # Esperar que aparezca el botón de cambiar cliente
         page.wait_for_selector("button[title='Cambiar cliente']", timeout=30000)
         print("  [Login] [OK] Entorno listo")
     except Exception as e:
         raise LoginError(f"Fallo al armar entorno: {e}")
 
 
-# ÔöÇÔöÇ Extracci├│n de datos del cliente ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+# ── Extracción de datos del cliente ────────────────
 
 def _hay_toast_error(page) -> bool:
     """Detecta y cierra el toast de error de Orange.
@@ -228,24 +228,24 @@ def _abrir_cambiar_cliente(page):
 def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                            modal_ya_abierto: bool = False):
     """
-    Busca un cliente por DNI (o tel├®fono) y extrae todos sus datos.
+    Busca un cliente por DNI (o teléfono) y extrae todos sus datos.
 
     Args:
-        modal_ya_abierto: Si True, el modal de b├║squeda ya est├í abierto
+        modal_ya_abierto: Si True, el modal de búsqueda ya está abierto
                           ("no es cliente" del DNI anterior). Solo escribe
                           el DNI y busca, sin reabrir el modal.
 
-    Retorna lista de dicts (una fila por l├¡nea del cliente).
+    Retorna lista de dicts (una fila por línea del cliente).
     """
     max_intentos = 2
 
     for intento in range(max_intentos):
-        print(f"  [Extracci├│n] Buscando: {numero} (Intento {intento+1})")
+        print(f"  [Extracción] Buscando: {numero} (Intento {intento+1})")
         try:
-            # ÔöÇÔöÇ 1. B├ÜSQUEDA ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+            # ── 1. BÚSQUEDA ──────────────────────────
             if modal_ya_abierto:
-                # ÔÜí Modal abierto del DNI anterior ("no es cliente")
-                # Solo escribir nuevo DNI y buscar ÔÇö ahorra ~3s
+                # ⚡ Modal abierto del DNI anterior ("no es cliente")
+                # Solo escribir nuevo DNI y buscar — ahorra ~3s
                 selector_documento = "input[name='document']"
                 try:
                     page.wait_for_selector(selector_documento, state="visible", timeout=5000)
@@ -253,12 +253,12 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     selector_documento = "input[ng-model='locatorCtrl.inputDocument']"
                     page.wait_for_selector(selector_documento, state="visible", timeout=5000)
             else:
-                # ÔöÇÔöÇ Abrir modal de b├║squeda ÔöÇÔöÇ
+                # ── Abrir modal de búsqueda ──
                 btn_cambiar = page.locator("button[title='Cambiar cliente']")
                 btn_cambiar.wait_for(state="visible", timeout=15000)
                 btn_cambiar.click(force=True)
 
-                # ÔòÉÔòÉÔòÉ CAMPO CORRECTO: input[name='document'] (no usar msisdn!) ÔòÉÔòÉÔòÉ
+                # ═══ CAMPO CORRECTO: input[name='document'] (no usar msisdn!) ═══
                 selector_documento = "input[name='document']"
                 try:
                     page.wait_for_selector(selector_documento, state="visible", timeout=10000)
@@ -266,7 +266,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     selector_documento = "input[ng-model='locatorCtrl.inputDocument']"
                     page.wait_for_selector(selector_documento, state="visible", timeout=10000)
 
-            # [WARN] NO usar _escribir_como_humano aqu├¡ ÔÇö el keyboard.type() pierde el foco en Angular
+            # [WARN] NO usar _escribir_como_humano aquí — el keyboard.type() pierde el foco en Angular
             # Usar fill() directo que escribe al value del input sin depender del foco
             campo_doc = page.locator(selector_documento).first
             campo_doc.click()
@@ -282,15 +282,15 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
             btn_buscar = page.locator("button:has-text('Buscar cliente')").last
             btn_buscar.click(force=True)
 
-            # ÔöÇÔöÇ BLINDAJE: esperar que el modal se cierre ÔöÇÔöÇ
-            print("  [Extracci├│n] Verificando procesamiento...")
+            # ── BLINDAJE: esperar que el modal se cierre ──
+            print("  [Extracción] Verificando procesamiento...")
             try:
                 btn_buscar.wait_for(state="hidden", timeout=10000)
             except Exception:
                 # Puede que el modal no se cierre si no es cliente
                 pass
 
-            # ÔòÉÔòÉÔòÉ DETECTAR "NO ES CLIENTE" ÔòÉÔòÉÔòÉ
+            # ═══ DETECTAR "NO ES CLIENTE" ═══
             no_cliente_selectores = [
                 "span.txt:has-text('No se han encontrado datos')",
                 "span.txt:has-text('No se han encontrado datos para este cliente')",
@@ -306,8 +306,8 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     continue
 
             if es_no_cliente:
-                print(f"  [Extracci├│n] [FAIL] {numero} NO ES CLIENTE")
-                # ÔÜí NO cerrar modal ÔÇö solo limpiar campo y escribir siguiente DNI
+                print(f"  [Extracción] [FAIL] {numero} NO ES CLIENTE")
+                # ⚡ NO cerrar modal — solo limpiar campo y escribir siguiente DNI
                 # El mensaje de error no bloquea el input
                 return [{
                     "DNI": numero,
@@ -327,9 +327,9 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     "_modal_abierto": True,  # Modal sigue abierto, escribir siguiente DNI
                 }]
 
-            # ÔòÉÔòÉÔòÉ DETECTAR ERROR "No se han podido recuperar campa├▒as" ÔòÉÔòÉÔòÉ
+            # ═══ DETECTAR ERROR "No se han podido recuperar campañas" ═══
             if _hay_toast_error(page):
-                print(f"  [Extracci├│n] [FAIL] {numero}: error campa├▒as ÔÇö Cambiar cliente y siguiente")
+                print(f"  [Extracción] [FAIL] {numero}: error campañas — Cambiar cliente y siguiente")
                 _abrir_cambiar_cliente(page)
                 return [{
                     "DNI": numero,
@@ -349,11 +349,11 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     "_modal_abierto": True,
                 }]
 
-            print("  [Extracci├│n] Cargando ficha de cliente...")
+            print("  [Extracción] Cargando ficha de cliente...")
             page.wait_for_timeout(1500)
             page.wait_for_selector(".mod-barclient__container-data", timeout=20000)
 
-            # ÔöÇÔöÇ DETECTAR CIMA GLOBAL (barra superior) ÔöÇÔöÇ
+            # ── DETECTAR CIMA GLOBAL (barra superior) ──
             cima_global = False
             try:
                 cima_btn = page.locator(".mod-barclient__container-lines-cima-btn")
@@ -363,20 +363,20 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
             except Exception:
                 pass
 
-            # ÔöÇÔöÇ 2. DATOS CABECERA ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+            # ── 2. DATOS CABECERA ─────────────────────
             nombre = _extraer_texto(page, ".tooltip-text.name strong")
             dni = _extraer_texto(page, "span.font-xxs.p-r-10")
             direccion = _extraer_texto(page, ".tooltip-text.address")
             seg_fijo = _extraer_texto(page, "div.font-xxs:has-text('Seg. Fijo:') strong")
-            seg_movil = _extraer_texto(page, "div.font-xxs:has-text('Seg. M├│vil:') strong")
+            seg_movil = _extraer_texto(page, "div.font-xxs:has-text('Seg. Móvil:') strong")
             paquete = _extraer_texto(page, ".client-tariff-title .font-lg")
 
-            print(f"  [Extracci├│n] Cliente: {nombre} | DNI: {dni} | Paquete: {paquete}")
-            print(f"  [Extracci├│n] Direcci├│n: {direccion}")
+            print(f"  [Extracción] Cliente: {nombre} | DNI: {dni} | Paquete: {paquete}")
+            print(f"  [Extracción] Dirección: {direccion}")
 
-            # ÔòÉÔòÉÔòÉ TOAST ERROR ("No se han podido recuperar campa├▒as") ÔÇö SALTAR DNI ÔòÉÔòÉÔòÉ
+            # ═══ TOAST ERROR ("No se han podido recuperar campañas") — SALTAR DNI ═══
             if _hay_toast_error(page):
-                print(f"  [Extracci├│n] [FAIL] {numero}: error campa├▒as ÔÇö Cambiar cliente y siguiente")
+                print(f"  [Extracción] [FAIL] {numero}: error campañas — Cambiar cliente y siguiente")
                 _abrir_cambiar_cliente(page)
                 return [{
                     "DNI": numero,
@@ -396,14 +396,14 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     "_modal_abierto": True,
                 }]
 
-            # ÔöÇÔöÇ 3. BUCLE DE L├ìNEAS CON PAGINACI├ôN ÔöÇÔöÇÔöÇÔöÇÔöÇ
+            # ── 3. BUCLE DE LÍNEAS CON PAGINACIÓN ─────
             lineas_finales = []
             lineas_vistas = set()  # Anti-loop paginacion
             hay_mas_paginas = True
             pagina_actual = 1
 
             while hay_mas_paginas:
-                print(f"  [Extracci├│n] P├ígina {pagina_actual} de l├¡neas...")
+                print(f"  [Extracción] Página {pagina_actual} de líneas...")
                 bloques = page.locator(".client-tariff-flex")
 
                 for i in range(bloques.count()):
@@ -414,15 +414,15 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     num_linea = bloque.locator(
                         ".line-section .color-primary strong"
                     ).inner_text().strip()
-                    # ­ƒöä Anti-loop: si ya vimos esta l├¡nea, Orange est├í repitiendo p├íginas
+                    # 🔄 Anti-loop: si ya vimos esta línea, Orange está repitiendo páginas
                     if num_linea in lineas_vistas:
-                        print(f"    ­ƒøæ L├¡nea {num_linea} repetida ÔÇö loop de paginaci├│n. Saliendo.")
+                        print(f"    🛑 Línea {num_linea} repetida — loop de paginación. Saliendo.")
                         hay_mas_paginas = False
                         break
                     lineas_vistas.add(num_linea)
-                    print(f"    -> L├¡nea: {num_linea}")
+                    print(f"    -> Línea: {num_linea}")
 
-                    # ÔöÇÔöÇ Extraer etiquetas reales del heading (CIMA, TV, Principal, etc.) ÔöÇÔöÇ
+                    # ── Extraer etiquetas reales del heading (CIMA, TV, Principal, etc.) ──
                     try:
                         heading = bloque.locator(".client-tariff-heading")
                         labels = heading.locator("span.label")
@@ -438,7 +438,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     match_fecha = re.search(r'Activo desde\s+(\d{2}/\d{2}/\d{4})', texto_completo)
                     activo_desde = match_fecha.group(1) if match_fecha else "N/A"
 
-                    # ÔöÇÔöÇ Detectar Renove: click en PESTA├æA "Renove" (no en tarjeta!) ÔöÇÔöÇ
+                    # ── Detectar Renove: click en PESTAÑA "Renove" (no en tarjeta!) ──
                     tiene_rm = False
                     variante_renove = "N/A"
                     renove_timeout = False
@@ -451,13 +451,13 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                         pass
 
                     try:
-                        # Buscar la BARRA DE PESTA├æAS de esta l├¡nea
+                        # Buscar la BARRA DE PESTAÑAS de esta línea
                         tab_bar = bloque.locator(".client-tariff-section-navs")
                         if tab_bar.count() > 0:
-                            # Encontrar el bot├│n "Renove" en los tabs
+                            # Encontrar el botón "Renove" en los tabs
                             renove_tab_btn = tab_bar.locator("button:has-text('Renove')")
                             if renove_tab_btn.count() > 0:
-                                print(f"      [RENOVE] Click en pesta├▒a de navegaci├│n 'Renove'...")
+                                print(f"      [RENOVE] Click en pestaña de navegación 'Renove'...")
                                 try:
                                     renove_tab_btn.first.click(timeout=5000)
                                     page.wait_for_timeout(500)
@@ -477,7 +477,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                                         renove_card = cards_container.locator(".card-tariff-minimal")
                                         for c_idx in range(renove_card.count()):
                                             card = renove_card.nth(c_idx)
-                                            # Leer info-text directamente (puede no tener label cuando tab est├í activo)
+                                            # Leer info-text directamente (puede no tener label cuando tab está activo)
                                             txt_el = card.locator(".card-tariff-info-text")
                                             if txt_el.count() > 0:
                                                 txt = txt_el.first.inner_text().strip()
@@ -502,8 +502,8 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                                 tiene_rm = True
 
                                 if "RENOVE MIXTO" in texto_up or "MIXTO" in texto_up:
-                                    if "M├üXIMO DESCUENTO" in texto_up or "MAXIMO DESCUENTO" in texto_up:
-                                        variante_renove = "Renove mixto al mejor precio con m├íximo descuento"
+                                    if "MÁXIMO DESCUENTO" in texto_up or "MAXIMO DESCUENTO" in texto_up:
+                                        variante_renove = "Renove mixto al mejor precio con máximo descuento"
                                     elif "CON DESCUENTO" in texto_up:
                                         variante_renove = "Renove mixto al mejor precio con descuento"
                                     elif "MEJOR PRECIO" in texto_up:
@@ -514,25 +514,25 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                                     variante_renove = "Renove Multidispositivo"
                                 elif texto_card:
                                     variante_renove = f"Renove ({texto_card})"
-                                # Si no hay texto, NO poner "Renove" a secas (pisar├¡a datos v├ílidos de otras l├¡neas)
-                                # mejor dejar "N/A" ÔÇö la l├¡nea no tiene Renove visible
+                                # Si no hay texto, NO poner "Renove" a secas (pisaría datos válidos de otras líneas)
+                                # mejor dejar "N/A" — la línea no tiene Renove visible
 
                                 print(f"      [RENOVE] Texto: {texto_card[:80] if texto_card else '(vacio)'} | -> {variante_renove}")
                             else:
-                                print(f"      [RENOVE] No hay pesta├▒a 'Renove' en la barra de tabs")
+                                print(f"      [RENOVE] No hay pestaña 'Renove' en la barra de tabs")
                         else:
-                            print(f"      [RENOVE] No hay barra de pesta├▒as en esta l├¡nea")
+                            print(f"      [RENOVE] No hay barra de pestañas en esta línea")
                     except Exception as e:
                         print(f"      [RENOVE] Error: {e}")
 
-                    # ÔöÇÔöÇ FALLBACK heading ÔöÇÔöÇ
+                    # ── FALLBACK heading ──
                     if not tiene_rm and tiene_rm_heading:
                         variante_renove = "Renove (detectado en heading)"
                         print(f"      [RENOVE] Detectado en heading: {heading_text[:80]}")
                         tiene_rm = True
 
                     if renove_timeout:
-                        raise Exception(f"Renove no carg├│ para {numero}")
+                        raise Exception(f"Renove no cargó para {numero}")
 
                     lineas_finales.append({
                         "DNI": dni,
@@ -551,16 +551,16 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                         "activo_desde": activo_desde,
                     })
 
-                # Siguiente p├ígina de l├¡neas
+                # Siguiente página de líneas
                 btn_siguiente = page.locator("button.ocs-pagination-next")
                 if (btn_siguiente.count() > 0
                         and not btn_siguiente.is_disabled()):
-                    # Verificar si la PRIMERA l├¡nea de esta p├ígina ya se proces├│ (loop)
+                    # Verificar si la PRIMERA línea de esta página ya se procesó (loop)
                     if pagina_actual > 1 and lineas_finales and num_linea in lineas_vistas:
-                        print(f"  [Extracci├│n] Ôøö Loop detectado en p├ígina {pagina_actual}. Saliendo de paginaci├│n.")
+                        print(f"  [Extracción] ⛔ Loop detectado en página {pagina_actual}. Saliendo de paginación.")
                         hay_mas_paginas = False
                     else:
-                        print("  [Extracci├│n] -> Siguiente p├ígina de l├¡neas...")
+                        print("  [Extracción] -> Siguiente página de líneas...")
                         btn_siguiente.click(force=True, timeout=30000)
                         page.wait_for_timeout(2000)
                         pagina_actual += 1
@@ -570,9 +570,9 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
             return lineas_finales
 
         except Exception as e:
-            print(f"  [Extracci├│n] [WARN] Error recuperable: {e}")
+            print(f"  [Extracción] [WARN] Error recuperable: {e}")
             if intento < max_intentos - 1:
-                print("  [Extracci├│n] [RETRY] Recuperando sesi├│n (1 F5)...")
+                print("  [Extracción] [RETRY] Recuperando sesión (1 F5)...")
                 recuperado = False
                 try:
                     page.reload(timeout=30000, wait_until="domcontentloaded")
@@ -581,18 +581,18 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                         page.locator("a.orange-box").click()
                         page.wait_for_timeout(2000)
                     abrir_nuevo_acto_comercial(page)
-                    print("  [Extracci├│n] [OK] Sesi├│n recuperada tras F5")
+                    print("  [Extracción] [OK] Sesión recuperada tras F5")
                     recuperado = True
                 except Exception as ex:
-                    print(f"  [Extracci├│n] F5 fall├│: {ex}")
+                    print(f"  [Extracción] F5 falló: {ex}")
                 if not recuperado:
-                    print("  [Extracci├│n] [FAIL] No se pudo recuperar con F5")
+                    print("  [Extracción] [FAIL] No se pudo recuperar con F5")
             else:
                 return [{"Linea": numero, "Estado": "Error de carga"}]
 
 
 def verificar_sesion_valida(page: Page) -> bool:
-    """Verifica si la sesi├│n actual sigue siendo v├ílida."""
+    """Verifica si la sesión actual sigue siendo válida."""
     try:
         page.locator("button[title='Cambiar cliente']").wait_for(
             state="visible", timeout=5000
