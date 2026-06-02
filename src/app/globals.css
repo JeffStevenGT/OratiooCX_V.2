@@ -1,0 +1,60 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+/* Oratioo CX Design System */
+body {
+  background: #f5f5fa;
+  color: #1a1030;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Animaciones */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fade-in 0.3s ease-out; }
+.animate-scale-in { animation: scale-in 0.3s ease-out; }
+.animate-slide-up { animation: slide-up 0.3s ease-out; }
+
+/* Cards */
+.card {
+  @apply bg-white rounded-xl border border-[#e0e0f0] p-6 shadow-sm;
+}
+.card-sm {
+  @apply bg-white rounded-xl border border-[#e0e0f0] p-4 shadow-sm;
+}
+
+/* Botones */
+.btn-primary {
+  @apply bg-[#0a6ea9] hover:bg-[#085d8f] text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors;
+}
+.btn-purple {
+  @apply bg-[#481163] hover:bg-[#5d1a7a] text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors;
+}
+.btn-outline {
+  @apply border border-[#e0e0f0] text-[#1a1030] rounded-lg px-4 py-2 text-sm font-medium transition-colors hover:bg-[#f0f0f8];
+}
+.btn-danger {
+  @apply bg-red-500 hover:bg-red-600 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors;
+}
+.btn-success {
+  @apply bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors;
+}
+
+/* Tablas */
+.table-header {
+  @apply text-[10px] font-semibold text-[#7c757c] uppercase tracking-wider;
+}
+.table-cell {
+  @apply py-2.5 px-3 text-sm;
+}

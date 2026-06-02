@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
  * Worker que procesa la cola de webhooks (se ejecuta como cron job o scheduled task).
  * Lee los eventos encolados y los persiste en PostgreSQL.
  */
-export async function processVpbxWebhookQueue(db: any) {
+async function processVpbxWebhookQueue(db: any) {
   while (true) {
     const raw = await redis.rpop('vpbx:webhooks');
     if (!raw) break;

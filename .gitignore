@@ -1,11 +1,13 @@
+node_modules/
+.next/
 .env
 .env.local
 __pycache__/
 *.pyc
 venv/
+dist/
 numeros.txt
 proxies.txt
 piloto_logs.txt
-# ignore pilot logs and temp scripts
 piloto_logs_w*.txt
 fix*.py
