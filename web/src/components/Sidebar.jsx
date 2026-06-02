@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { NavLink } from "react-router-dom";
-import { supabase, TABLA_CLIENTES } from "../supabaseClient";
+import { supabase } from "../supabaseClient";
 import {
   LayoutDashboard,
   Users,
@@ -10,9 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Shield,
-  Phone,
   Package,
-  Calendar,
   ChevronDown,
   Globe,
   Loader2,
@@ -51,23 +49,7 @@ const GROUPS = [
       },
     ],
   },
-  {
-    label: "Comercial",
-    items: [
-      {
-        to: "/dialer",
-        icon: Phone,
-        label: "Power Dialer",
-        badge: null,
-      },
-      {
-        to: "/agenda",
-        icon: Calendar,
-        label: "Agenda",
-        badge: "agenda",
-      },
-    ],
-  },
+
   {
     label: "Administración",
     items: [
@@ -88,12 +70,12 @@ export default function Sidebar({ onLogout }) {
   const [passSaving, setPassSaving] = useState(false);
   const [passError, setPassError] = useState('');
   const [passSuccess, setPassSuccess] = useState('');
-  const [agendaCount, setAgendaCount] = useState(0);
+
   const [gruposAbiertos, setGruposAbiertos] = useState(() => {
     const saved = localStorage.getItem("sidebar_grupos");
     return saved
       ? JSON.parse(saved)
-      : { Comercial: true, Infraestructura: false, Administración: false };
+      : { Infraestructura: false, Administración: false };
   });
 
     const session = JSON.parse(localStorage.getItem("oratioo_session") || "{}");
@@ -107,8 +89,7 @@ export default function Sidebar({ onLogout }) {
     '/configurar-bot': { asesor: false, supervisor: false, back_office: false, it: true, jefe_area: true, desarrollador: true },
     '/documentos': { asesor: false, supervisor: true, back_office: true, it: true, jefe_area: true, desarrollador: true },
     '/lotes': { asesor: false, supervisor: true, back_office: false, it: false, jefe_area: true, desarrollador: true },
-    '/dialer': { asesor: true, supervisor: true, back_office: false, it: false, jefe_area: false, desarrollador: false },
-    '/agenda': { asesor: true, supervisor: true, back_office: true, it: false, jefe_area: false, desarrollador: false },
+
     '/admin/users': { asesor: false, supervisor: false, back_office: false, it: false, jefe_area: true, desarrollador: true },
   }
 
@@ -121,30 +102,7 @@ export default function Sidebar({ onLogout }) {
     return perms ? perms[userRol] : true
   }
 
-  useEffect(() => {
-    if (!myId) return;
-    const hoyInicio = new Date();
-    hoyInicio.setHours(0, 0, 0, 0);
-    const hoyFin = new Date();
-    hoyFin.setHours(23, 59, 59, 999);
 
-    supabase
-      .from(TABLA_CLIENTES)
-      .select("atributos_dinamicos")
-      .limit(500)
-      .then(({ data }) => {
-        if (!data) return;
-        const ag = data.filter((c) => {
-          const p = c.atributos_dinamicos?.pipeline;
-          if (!p?.callback_at || !p?.asesor_id) return false;
-          if (Number(p.asesor_id) !== Number(myId)) return false;
-          const ca = new Date(p.callback_at);
-          return ca >= hoyInicio && ca <= hoyFin;
-        }).length;
-        setAgendaCount(ag);
-      })
-      .catch(() => {});
-  }, []);
 
   const toggleGrupo = (label) => {
     setGruposAbiertos((prev) => {
@@ -154,10 +112,7 @@ export default function Sidebar({ onLogout }) {
     });
   };
 
-  const badgeCount = (badgeType) => {
-    if (badgeType === "agenda") return agendaCount;
-    return 0;
-  };
+  const badgeCount = () => 0;
 
   return (
     <aside

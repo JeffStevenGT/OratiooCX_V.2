@@ -12,8 +12,7 @@ import Maquinas from './pages/Maquinas'
 import Documentos from './pages/Documentos'
 import Workers from './pages/Workers'
 import Lotes from './pages/Lotes'
-import AsesorDialer from './pages/AsesorDialer';
-import Agenda from './pages/Agenda';
+
 import ConfigurarBot from './pages/ConfigurarBot'
 import Usuarios from './pages/Usuarios'
 
@@ -194,26 +193,7 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/dialer"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <AsesorDialer />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/agenda"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <Agenda />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
+
       <Route
         path="/admin/users"
         element={
