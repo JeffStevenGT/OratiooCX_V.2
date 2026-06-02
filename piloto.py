@@ -18,7 +18,11 @@ import os, re, sys, time, random, json
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Cargar .env o .env.example como fallback
+_env_file = Path(__file__).parent / ".env"
+if not _env_file.exists():
+    _env_file = Path(__file__).parent / ".env.example"
+load_dotenv(_env_file)
 
 # ── Log a archivo ──
 _LOG = Path(__file__).parent / "piloto_logs.txt"
