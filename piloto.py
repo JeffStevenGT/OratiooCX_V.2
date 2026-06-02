@@ -1,13 +1,12 @@
 """
-piloto.py — Driver para prueba piloto con el bot completo de master
-====================================================================
-Usa el bot/ completo de master (robusto, con reintentos y todo).
-Agrega dump verbose de todas las pestañas de todas las líneas.
-
-USO:
-  python piloto.py --workers N
+piloto.py — Copia exacta del worker de master SIN Supabase + verbose dump
+=====================================================================
+- Mismo login, mismos reintentos, mismas funciones
+- Lee DNIs de numeros.txt (no de Supabase)
+- NO guarda nada en BD
+- Dump de todas las pestañas para análisis
 """
-import os, sys, re, time, random, json, multiprocessing as mp
+import os, sys, time, random, json
 import argparse
 from pathlib import Path
 from dotenv import load_dotenv
@@ -19,32 +18,31 @@ if not _env_file.exists():
 load_dotenv(_env_file)
 
 sys.path.insert(0, str(Path(__file__).parent / "bot"))
-from login import extraer_datos_cliente, realizar_login, seleccionar_marca_orange, abrir_nuevo_acto_comercial
+from browser_setup import crear_contexto_espana
+from login import (
+    realizar_login, seleccionar_marca_orange, abrir_nuevo_acto_comercial,
+    extraer_datos_cliente, manejar_cookies_flexible, manejar_maximo_sesiones
+)
+
+ORANGE_URL = "https://pangea.orange.es/"
 
 
 def cargar_proxies():
-    prox_file = Path(__file__).parent / "proxies.txt"
-    if not prox_file.exists():
+    pf = Path(__file__).parent / "proxies.txt"
+    if not pf.exists():
         return []
     proxies = []
-    for linea in prox_file.read_text(encoding="utf-8").split("\n"):
-        l = linea.strip()
+    for l in pf.read_text("utf-8").split("\n"):
+        l = l.strip()
         if not l or l.startswith("#"):
             continue
-        partes = l.split(":")
-        if len(partes) == 4:
-            proxies.append({
-                "server": f"http://{partes[0]}:{partes[1]}",
-                "username": partes[2],
-                "password": partes[3],
-            })
-        elif len(partes) == 2:
-            proxies.append({"server": f"http://{partes[0]}:{partes[1]}"})
+        p = l.split(":")
+        if len(p) == 4:
+            proxies.append({"server": f"http://{p[0]}:{p[1]}", "username": p[2], "password": p[3]})
     return proxies
 
 
-def dump_todas_pestanas(page, worker_id, wlog):
-    """Dump de TODAS las pestañas de TODAS las líneas."""
+def dump_todas_pestanas(page, wlog):
     lineas_vistas = set()
     pagina = 1
     hay_mas = True
@@ -63,88 +61,97 @@ def dump_todas_pestanas(page, worker_id, wlog):
             lineas_vistas.add(num_linea)
             try:
                 heading = bloque.locator(".client-tariff-heading")
-                etiquetas = [h.inner_text().strip() for h in heading.locator("span.label").all()]
+                etiq = [h.inner_text().strip() for h in heading.locator("span.label").all()]
             except:
-                etiquetas = []
-            wlog(f"\n  📱 Línea: {num_linea}  Etiquetas: {etiquetas}")
+                etiq = []
+            wlog(f"\n  📱 Línea: {num_linea}  {etiq}")
 
             tab_bar = bloque.locator(".client-tariff-section-navs")
             if tab_bar.count() > 0:
                 tabs = tab_bar.locator("button.Title")
-                wlog(f"    [TABS] {tabs.count()} pestañas")
+                wlog(f"    [TABS] {tabs.count()} tabs")
                 for t_idx in range(tabs.count()):
                     try:
                         nombre = tabs.nth(t_idx).inner_text().strip()
                         tabs.nth(t_idx).click(timeout=5000)
-                        page.wait_for_timeout(400)
-                        cards_c = bloque.locator(".client-tariff-section-cards")
-                        if cards_c.count() > 0:
-                            cards = cards_c.locator("> div")
-                            wlog(f"    [{nombre}] {cards.count()} cards")
-                            for c_idx in range(cards.count()):
-                                try:
-                                    txt = cards.nth(c_idx).inner_text().strip()[:400]
-                                    wlog(f"      Card: {txt}")
-                                except:
-                                    pass
-                        else:
-                            wlog(f"    [{nombre}] sin cards")
+                        time.sleep(0.4)
+                        cc = bloque.locator(".client-tariff-section-cards")
+                        if cc.count() > 0:
+                            cards = cc.locator("> div")
+                            ncards = cards.count()
+                            if ncards > 0:
+                                wlog(f"    [{nombre}] {ncards} cards")
+                                for c_idx in range(ncards):
+                                    try:
+                                        t = cards.nth(c_idx).inner_text().strip()[:400]
+                                        wlog(f"      Card: {t}")
+                                    except:
+                                        pass
+                            else:
+                                wlog(f"    [{nombre}] sin cards")
                     except:
                         pass
 
         btn = page.locator("button.ocs-pagination-next")
         if btn.count() > 0 and not btn.is_disabled():
             btn.click(force=True, timeout=30000)
-            page.wait_for_timeout(2000)
+            time.sleep(2)
             pagina += 1
         else:
             hay_mas = False
 
 
 def procesar_worker(dnis_chunk, worker_id, proxy_conf):
-    log_file = Path(__file__).parent / f"piloto_logs_w{worker_id}.txt"
-    fh = open(log_file, "w", encoding="utf-8")
+    lf = Path(__file__).parent / f"piloto_logs_w{worker_id}.txt"
+    fh = open(lf, "w", encoding="utf-8")
 
-    def wlog(msg=""):
-        print(msg)
-        fh.write(msg + "\n")
+    def wlog(m=""):
+        print(m)
+        fh.write(m + "\n")
         fh.flush()
 
-    wlog(f"[Worker {worker_id}] {len(dnis_chunk)} DNIs — Primeros: {dnis_chunk[:3]}")
-    if proxy_conf:
-        wlog(f"[Worker {worker_id}] Proxy: {proxy_conf['server']}")
+    wlog(f"[Worker {worker_id}] {len(dnis_chunk)} DNIs — {dnis_chunk[:3]}")
+    wlog(f"[Worker {worker_id}] Proxy: {proxy_conf['server'] if proxy_conf else 'ninguno'}")
     wlog("=" * 80)
 
-    p = sync_playwright().start()
-    launch_kwargs = {"headless": False}
-    if proxy_conf:
-        launch_kwargs["proxy"] = {"server": proxy_conf["server"]}
-    browser = p.chromium.launch(**launch_kwargs)
-    ctx_kwargs = {"viewport": {"width": 1366, "height": 768}}
-    if proxy_conf and proxy_conf.get("username"):
-        ctx_kwargs["http_credentials"] = {
-            "username": proxy_conf["username"],
-            "password": proxy_conf["password"],
-        }
-    context = browser.new_context(**ctx_kwargs)
-    page = context.new_page()
-
-    # Login completo (usando funciones de master)
+    # ── PLAYWRIGHT + BROWSER (exactamente como worker.py) ──
+    pw = sync_playwright().start()
     try:
-        page.goto("https://pangea.orange.es/", timeout=60000)
-        realizar_login(page)
-        seleccionar_marca_orange(page)
-        abrir_nuevo_acto_comercial(page)
-        page.wait_for_selector("button[title='Cambiar cliente']", timeout=30000)
-        wlog("[LOGIN] OK")
+        browser, context = crear_contexto_espana(pw, proxy_config=proxy_conf)
+        page = context.new_page()
     except Exception as e:
-        wlog(f"[FATAL] Login falló: {e}")
-        browser.close()
-        p.stop()
+        wlog(f"[FATAL] No se pudo iniciar Playwright: {e}")
+        pw.stop()
         fh.close()
         return
-    wlog("=" * 80)
 
+    # ── LOGIN con 5 reintentos (exactamente como worker.py) ──
+    login_ok = False
+    for intento in range(5):
+        try:
+            page.goto(ORANGE_URL, timeout=90000)
+            manejar_cookies_flexible(page)
+            realizar_login(page)
+            seleccionar_marca_orange(page)
+            abrir_nuevo_acto_comercial(page)
+            wlog(f"[LOGIN] OK (intento {intento+1})")
+            login_ok = True
+            break
+        except Exception as e:
+            wlog(f"[LOGIN] Falló intento {intento+1}/5: {e}")
+            if intento == 4:
+                wlog("[FATAL] Login falló tras 5 intentos")
+                browser.close()
+                pw.stop()
+                fh.close()
+                return
+            try:
+                page.goto(ORANGE_URL, timeout=30000)
+            except:
+                pass
+            time.sleep(5)
+
+    # ── PROCESAR DNIs ──
     procesados = errores = no_clientes = 0
     modal_abierto = False
 
@@ -166,7 +173,9 @@ def procesar_worker(dnis_chunk, worker_id, proxy_conf):
 
             modal_abierto = primera.get("_modal_abierto", False)
             wlog(f"  Cliente: {primera.get('Nombre','N/A')} | {primera.get('DNI','N/A')} | {len(lineas)} línea(s)")
-            dump_todas_pestanas(page, worker_id, wlog)
+
+            # DUMP de todas las pestañas
+            dump_todas_pestanas(page, wlog)
             procesados += 1
 
         except Exception as e:
@@ -174,11 +183,14 @@ def procesar_worker(dnis_chunk, worker_id, proxy_conf):
             errores += 1
             try:
                 page.reload(timeout=30000)
-                page.wait_for_timeout(3000)
-                realizar_login(page) if page.locator("input[name='temp-username']").is_visible() else None
-                seleccionar_marca_orange(page) if page.locator("a.orange-box").is_visible() else None
+                time.sleep(3)
+                page.goto(ORANGE_URL, timeout=30000)
+                manejar_cookies_flexible(page)
+                realizar_login(page)
+                seleccionar_marca_orange(page)
                 abrir_nuevo_acto_comercial(page)
                 modal_abierto = False
+                wlog(f"  [RECOVERY] Relogueado")
             except:
                 wlog(f"  [FATAL] No se pudo recuperar")
                 break
@@ -186,7 +198,7 @@ def procesar_worker(dnis_chunk, worker_id, proxy_conf):
         wlog(f"  --- {procesados} OK / {no_clientes} NC / {errores} ERR ---")
 
     browser.close()
-    p.stop()
+    pw.stop()
     fh.close()
     wlog(f"\n[Worker {worker_id}] FIN: {procesados} OK / {no_clientes} NC / {errores} ERR")
 
@@ -195,33 +207,33 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--workers", type=int, default=1)
     args = parser.parse_args()
-    num_w = max(1, min(args.workers, 20))
+    nw = max(1, min(args.workers, 20))
 
-    num_file = Path(__file__).parent / "numeros.txt"
-    if not num_file.exists():
-        print(f"[ERROR] Falta {num_file}")
+    nf = Path(__file__).parent / "numeros.txt"
+    if not nf.exists():
+        print(f"[ERROR] Falta {nf}")
         sys.exit(1)
-    dnis = [l.strip().upper() for l in num_file.read_text(encoding="utf-8").split("\n")
+    dnis = [l.strip().upper() for l in nf.read_text("utf-8").split("\n")
             if l.strip() and not l.strip().startswith("#")]
-    print(f"[INICIO] {len(dnis)} DNIs — {num_w} worker(s)")
 
     proxies = cargar_proxies()
-    if len(proxies) < num_w:
-        print(f"[WARN] {len(proxies)} proxies para {num_w} workers")
+    if len(proxies) < nw:
+        print(f"[WARN] {len(proxies)} proxies para {nw} workers")
 
-    chunks = [[] for _ in range(num_w)]
+    chunks = [[] for _ in range(nw)]
     for i, d in enumerate(dnis):
-        chunks[i % num_w].append(d)
+        chunks[i % nw].append(d)
 
+    import multiprocessing as mp
     procs = []
-    for wid in range(num_w):
+    for wid in range(nw):
         proxy = proxies[wid % len(proxies)] if proxies else None
         p = mp.Process(target=procesar_worker, args=(chunks[wid], wid + 1, proxy))
         procs.append(p)
         p.start()
         print(f"  Worker {wid+1} — {len(chunks[wid])} DNIs")
 
-    print(f"\n[ESPERANDO] {num_w} worker(s)...\n")
+    print(f"\n[ESPERANDO] {nw} worker(s)...\n")
     for p in procs:
         p.join()
     print(f"\n[FIN] Logs: piloto_logs_w*.txt")
