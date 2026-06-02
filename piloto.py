@@ -20,7 +20,6 @@ load_dotenv(_env_file)
 
 sys.path.insert(0, str(Path(__file__).parent))
 from bot.login import extraer_datos_cliente, realizar_login, seleccionar_marca_orange, abrir_nuevo_acto_comercial
-from bot.browser_setup import crear_navegador  # noqa
 
 
 def login_orange(page):
