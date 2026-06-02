@@ -26,9 +26,26 @@ import json
 import random
 import subprocess
 import threading
+import atexit
 from pathlib import Path
 from dotenv import load_dotenv
 from datetime import datetime
+
+# ── LOG A ARCHIVO (prueba piloto) ─────────────────
+_LOG_FILE = Path(__file__).parent / "logs_piloto.txt"
+_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+_log_fh = open(_LOG_FILE, "w", encoding="utf-8")
+atexit.register(lambda: _log_fh.close())
+
+# Redirigir print() global para que todo se guarde en el log
+_original_print = print
+import builtins
+def _print_wrapper(*args, **kwargs):
+    msg = " ".join(str(a) for a in args)
+    _log_fh.write(msg + "\n")
+    _log_fh.flush()
+    _original_print(*args, **kwargs)
+builtins.print = _print_wrapper
 
 # ── Pause/Resume en Windows (via kernel32) ───────
 if sys.platform == "win32":
