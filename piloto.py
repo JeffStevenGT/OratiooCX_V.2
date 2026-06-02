@@ -155,29 +155,25 @@ def procesar_worker(dnis_chunk, worker_id, proxy_conf):
 
     # ── LOGIN con 5 reintentos (exactamente como worker.py) ──
     login_ok = False
-    for intento in range(5):
+    for intento in range(999):
         try:
             page.goto(ORANGE_URL, timeout=90000)
             manejar_cookies_flexible(page)
             realizar_login(page)
             seleccionar_marca_orange(page)
             abrir_nuevo_acto_comercial(page)
-            wlog(f"[LOGIN] OK (intento {intento+1})")
+            wlog("[LOGIN] OK (intento " + str(intento+1) + ")")
             login_ok = True
             break
         except Exception as e:
-            wlog(f"[LOGIN] Falló intento {intento+1}/5: {e}")
-            if intento == 4:
-                wlog("[FATAL] Login falló tras 5 intentos")
-                browser.close()
-                pw.stop()
-                fh.close()
-                return
+            wlog("[LOGIN] Fallo intento " + str(intento+1) + ": " + str(e))
+            wlog("[LOGIN] Reintentando en 30s...")
             try:
                 page.goto(ORANGE_URL, timeout=30000)
             except:
                 pass
-            time.sleep(5)
+            time.sleep(30)
+
 
     # ── PROCESAR DNIs ──
     procesados = errores = no_clientes = 0
