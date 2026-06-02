@@ -255,50 +255,55 @@ def dump_tabs(page, bloque, dni_idx):
             log(f"      [Tab {t_idx}] ERROR: {e}")
 
 
-def procesar_dnis():
-    # Cargar DNIs
-    num_file = Path(__file__).parent / "numeros.txt"
-    if not num_file.exists():
-        log(f"[ERROR] No existe {num_file}")
-        sys.exit(1)
-    dnis = extraer_dnis(num_file.read_text(encoding="utf-8"))
-    log(f"[INICIO] {len(dnis)} DNIs cargados")
-    log(f"[INICIO] Primeros: {dnis[:5]}")
-    log("=" * 80)
+def procesar_worker(dnis_chunk, worker_id, proxy_url):
+    """Procesa un chunk de DNIs en un proceso separado."""
+    # Log individual por worker
+    log_file = Path(__file__).parent / f"piloto_logs_w{worker_id}.txt"
+    fh = open(log_file, "w", encoding="utf-8")
+    def wlog(msg=""):
+        print(msg)
+        fh.write(msg + "\n")
+        fh.flush()
 
-    # Cargar proxies y elegir uno al azar
-    proxies = cargar_proxies()
-    proxy_url = random.choice(proxies) if proxies else None
+    wlog(f"[Worker {worker_id}] {len(dnis_chunk)} DNIs asignados")
+    wlog(f"[Worker {worker_id}] Primeros: {dnis_chunk[:3]}")
     if proxy_url:
-        log(f"[PROXY] Proxy elegido: {proxy_url[:60]}...")
+        wlog(f"[Worker {worker_id}] Proxy: {proxy_url[:60]}...")
+    wlog("=" * 80)
 
-    # Iniciar navegador
     p, browser, page = iniciar_navegador(proxy_url)
-    login_orange(page)
-    log("=" * 80)
+    try:
+        login_orange(page)
+    except Exception as e:
+        wlog(f"[Worker {worker_id}] [FATAL] Login falló: {e}")
+        browser.close()
+        p.stop()
+        fh.close()
+        return
+    wlog("=" * 80)
 
     procesados = 0
     errores = 0
     no_clientes = 0
     modal_abierto = False
 
-    for idx, dni in enumerate(dnis):
-        log(f"\n{'='*80}")
-        log(f"[{idx+1}/{len(dnis)}] DNI: {dni}")
+    for idx, dni in enumerate(dnis_chunk):
+        wlog(f"\n{'='*80}")
+        wlog(f"[W{worker_id}][{idx+1}/{len(dnis_chunk)}] DNI: {dni}")
 
         try:
             encontrado, modal_abierto = buscar_dni(page, dni, modal_abierto)
 
             if not encontrado:
                 no_clientes += 1
-                log(f"  -> NO CLIENTE")
+                wlog(f"  -> NO CLIENTE")
                 continue
 
             # Cabecera
             cab = extraer_cabecera(page)
-            log(f"  Cliente: {cab['nombre']} | DNI: {cab['dni']} | Paquete: {cab['paquete']}")
-            log(f"  Dirección: {cab['direccion']}")
-            log(f"  Seg Fijo: {cab['seg_fijo']} | Seg Móvil: {cab['seg_movil']}")
+            wlog(f"  Cliente: {cab['nombre']} | DNI: {cab['dni']} | Paquete: {cab['paquete']}")
+            wlog(f"  Dirección: {cab['direccion']}")
+            wlog(f"  Seg Fijo: {cab['seg_fijo']} | Seg Móvil: {cab['seg_movil']}")
 
             # Recorrer líneas
             lineas_vistas = set()
@@ -307,7 +312,7 @@ def procesar_dnis():
 
             while hay_mas:
                 bloques = page.locator(".client-tariff-flex")
-                log(f"\n  --- Página {pagina} — {bloques.count()} bloque(s) ---")
+                wlog(f"\n  --- Página {pagina} — {bloques.count()} bloque(s) ---")
 
                 for i in range(bloques.count()):
                     bloque = bloques.nth(i)
@@ -317,7 +322,7 @@ def procesar_dnis():
                         continue
 
                     if num_linea in lineas_vistas:
-                        log(f"  🛑 Línea {num_linea} repetida — fin de paginación")
+                        wlog(f"  🛑 Línea {num_linea} repetida — fin de paginación")
                         hay_mas = False
                         break
                     lineas_vistas.add(num_linea)
@@ -331,11 +336,11 @@ def procesar_dnis():
                         etiquetas = []
                         texto_heading = ""
 
-                    log(f"\n  📱 Línea: {num_linea}")
-                    log(f"    Etiquetas: {etiquetas}")
-                    log(f"    Heading: {texto_heading[:200]}")
+                    wlog(f"\n  📱 Línea: {num_linea}")
+                    wlog(f"    Etiquetas: {etiquetas}")
+                    wlog(f"    Heading: {texto_heading[:200]}")
 
-                    # DUMP de todas las pestañas
+                    # DUMP de todas las pestañas (usa page global)
                     dump_tabs(page, bloque, idx)
 
                 # Siguiente página
@@ -350,7 +355,7 @@ def procesar_dnis():
             procesados += 1
 
         except Exception as e:
-            log(f"  [ERROR] {e}")
+            wlog(f"  [ERROR] {e}")
             errores += 1
             try:
                 page.reload(timeout=30000)
@@ -358,23 +363,66 @@ def procesar_dnis():
                 login_orange(page)
                 modal_abierto = False
             except:
-                log(f"  [FATAL] No se pudo recuperar")
+                wlog(f"  [FATAL] No se pudo recuperar")
                 break
 
-        log(f"--- Progreso: {procesados} OK / {no_clientes} no_clientes / {errores} errores ---")
+        wlog(f"--- Progreso: {procesados} OK / {no_clientes} no_clientes / {errores} errores ---")
 
-    # Cerrar
     browser.close()
     p.stop()
-    _fh.close()
+    fh.close()
+
+    wlog(f"\n{'='*80}")
+    wlog(f"[Worker {worker_id}] FIN")
+    wlog(f"  Procesados:  {procesados}")
+    wlog(f"  No clientes: {no_clientes}")
+    wlog(f"  Errores:     {errores}")
+
+
+def procesar_dnis():
+    import multiprocessing as mp
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Piloto Orange Pangea")
+    parser.add_argument("--workers", type=int, default=1, help="Número de workers paralelos")
+    args = parser.parse_args()
+    num_workers = max(1, min(args.workers, 10))  # Máximo 10 workers por RAM
+
+    # Cargar DNIs
+    num_file = Path(__file__).parent / "numeros.txt"
+    if not num_file.exists():
+        log(f"[ERROR] No existe {num_file}")
+        sys.exit(1)
+    dnis = extraer_dnis(num_file.read_text(encoding="utf-8"))
+    log(f"[INICIO] {len(dnis)} DNIs cargados para {num_workers} worker(s)")
+    log(f"[INICIO] Primeros: {dnis[:5]}")
+
+    # Cargar proxies
+    proxies = cargar_proxies()
+    if len(proxies) < num_workers:
+        log(f"[WARN] {len(proxies)} proxies para {num_workers} workers — algunos sin proxy")
+
+    # Dividir DNIs entre workers
+    chunks = [[] for _ in range(num_workers)]
+    for i, dni in enumerate(dnis):
+        chunks[i % num_workers].append(dni)
+
+    # Asignar proxies (1 por worker, rotatorio)
+    procesos = []
+    for wid in range(num_workers):
+        proxy = proxies[wid % len(proxies)] if proxies else None
+        p = mp.Process(target=procesar_worker, args=(chunks[wid], wid + 1, proxy))
+        procesos.append(p)
+        p.start()
+        log(f"  Worker {wid+1} iniciado — {len(chunks[wid])} DNIs")
+
+    log(f"\n[ESPERANDO] {num_workers} worker(s) en ejecución...\n")
+    for p in procesos:
+        p.join()
 
     log(f"\n{'='*80}")
-    log(f"[FIN] Resumen:")
-    log(f"  Total DNIs:  {len(dnis)}")
-    log(f"  Procesados:  {procesados}")
-    log(f"  No clientes: {no_clientes}")
-    log(f"  Errores:     {errores}")
-    log(f"  Log guardado en: {_LOG}")
+    log(f"[FIN PILOTO] Todos los workers terminaron")
+    log(f"  Logs: piloto_logs_w*.txt en {Path(__file__).parent}")
 
 
 if __name__ == "__main__":
