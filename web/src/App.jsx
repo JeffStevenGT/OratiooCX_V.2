@@ -11,7 +11,6 @@ import Proxies from './pages/Proxies'
 import Maquinas from './pages/Maquinas'
 import Documentos from './pages/Documentos'
 import Workers from './pages/Workers'
-import Lotes from './pages/Lotes'
 
 import ConfigurarBot from './pages/ConfigurarBot'
 import Usuarios from './pages/Usuarios'
@@ -23,7 +22,6 @@ const pageTitles = {
   '/maquinas': 'Máquinas',
   '/documentos': 'Documentos',
   '/workers': 'Workers',
-  '/lotes': 'Lotes',
 }
 
 function Layout({ children }) {
@@ -183,16 +181,7 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/lotes"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <Lotes />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
+
 
       <Route
         path="/admin/users"

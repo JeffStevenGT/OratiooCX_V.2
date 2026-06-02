@@ -47,16 +47,11 @@ export default function Documentos() {
   const [uploaded, setUploaded] = useState([])
   const [loadingHistory, setLoadingHistory] = useState(true)
   const [error, setError] = useState('')
-  const [analyzing, setAnalyzing] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
   const [agenteActivo, setAgenteActivo] = useState(false)
   const [expandedDay, setExpandedDay] = useState(null)
   const [dayDetails, setDayDetails] = useState({})
-  const [maquinasDisponibles, setMaquinasDisponibles] = useState([])
-  const [selectedMaquinas, setSelectedMaquinas] = useState({})
-  const [workersConfig, setWorkersConfig] = useState({})
-  const [analisisEnCurso, setAnalisisEnCurso] = useState(false)
-  const [maquinasTrabajando, setMaquinasTrabajando] = useState({}) // { nombre: true }
+
 
   function hoyLocal() {
     const d = new Date()
@@ -87,38 +82,18 @@ export default function Documentos() {
     }
   }, [uploaded.length])
 
-  // Cargar máquinas activas
+  // Cargar máquinas activas (para estado)
   const fetchMaquinas = async () => {
     const ahora = Date.now()
-    const { data } = await supabase.from('maquinas').select('nombre,estado,ultimo_heartbeat,workers_config,workers_info').limit(20)
-    const activas = (data || []).filter(m => {
-      if (m.estado !== 'conectado' && m.estado !== 'activo') return false
-      if (!m.ultimo_heartbeat) return false
-      return (ahora - new Date(m.ultimo_heartbeat).getTime()) < 25000
-    })
-    setMaquinasDisponibles(activas)
-    // Seleccionar todas por defecto
-    const sel = {}
-    const wc = {}
-    for (const m of activas) {
-      sel[m.nombre] = true
-      wc[m.nombre] = parseInt(m.workers_config) || 1
-    }
-    setSelectedMaquinas(sel)
-    setWorkersConfig(wc)
-    // Verificar workers activos (deben reportar actividad, no solo en_progreso)
     try {
-      let workersReportando = false
-      const trabajando = {}
-      for (const m of activas) {
-        const info = m.workers_info
-        if (Array.isArray(info) && info.some(w => (w.estado === 'activo' || w.dni_actual))) {
-          workersReportando = true
-          trabajando[m.nombre] = true
-        }
-      }
-      setAnalisisEnCurso(workersReportando)
-      setMaquinasTrabajando(trabajando)
+      const { data } = await supabase.from('maquinas').select('nombre,estado,ultimo_heartbeat,workers_info').limit(20)
+      // Solo actualizar estado de agente activo
+      const activa = (data || []).some(m => {
+        if (m.estado !== 'conectado' && m.estado !== 'activo') return false
+        if (!m.ultimo_heartbeat) return false
+        return (ahora - new Date(m.ultimo_heartbeat).getTime()) < 25000
+      })
+      if (!activa) setAgenteActivo(false)
     } catch {}
   }
   useEffect(() => { fetchMaquinas() }, [])
@@ -143,24 +118,30 @@ export default function Documentos() {
     return () => clearInterval(interval)
   }, [])
 
-  // ── Queue / Lote stats ──
-  const [queueStats, setQueueStats] = useState({ total: 0, pendientes: 0, en_progreso: 0, completados: 0, errores: 0 })
+  // ── Queue / Lote stats (solo del último documento) ──
+  const [queueStats, setQueueStats] = useState({ total: 0, pendientes: 0, completados: 0, errores: 0 })
   const [resetting, setResetting] = useState(false)
   const [resetMsg, setResetMsg] = useState({ status: '', text: '' }) // { status: 'ok'|'error', text: '' }
 
   const loadQueueStats = async () => {
     try {
-      // Consultas COUNT directas (sin limite, precisas)
-      const [totalRes, pendientesRes, progRes, compRes, errRes] = await Promise.all([
-        supabase.from('lineas').select('*', { count: 'exact', head: true }),
-        supabase.from('lineas').select('*', { count: 'exact', head: true }).filter('atributos_dinamicos->>estado', 'eq', 'pendiente'),
-        supabase.from('lineas').select('*', { count: 'exact', head: true }).filter('atributos_dinamicos->>estado', 'eq', 'en_progreso'),
-        supabase.from('lineas').select('*', { count: 'exact', head: true }).filter('atributos_dinamicos->>estado', 'eq', 'completado'),
-        supabase.from('lineas').select('*', { count: 'exact', head: true }).filter('atributos_dinamicos->>estado', 'eq', 'error'),
+      // Obtener el último documento cargado
+      const { data: docs } = await supabase.from('documentos').select('id').order('created_at', { ascending: false }).limit(1)
+      if (!docs || docs.length === 0) {
+        setQueueStats({ total: 0, pendientes: 0, completados: 0, errores: 0 })
+        return
+      }
+      const docId = String(docs[0].id)
+
+      const [totalRes, pendientesRes, compRes, errRes] = await Promise.all([
+        supabase.from('lineas').select('*', { count: 'exact', head: true }).filter('atributos_dinamicos->>documento_id', 'eq', docId),
+        supabase.from('lineas').select('*', { count: 'exact', head: true }).filter('atributos_dinamicos->>documento_id', 'eq', docId).filter('atributos_dinamicos->>estado', 'eq', 'pendiente'),
+        supabase.from('lineas').select('*', { count: 'exact', head: true }).filter('atributos_dinamicos->>documento_id', 'eq', docId).filter('atributos_dinamicos->>estado', 'eq', 'completado'),
+        supabase.from('lineas').select('*', { count: 'exact', head: true }).filter('atributos_dinamicos->>documento_id', 'eq', docId).filter('atributos_dinamicos->>estado', 'eq', 'error'),
       ])
       setQueueStats({
         total: totalRes.count || 0,
-        pendientes: (pendientesRes.count || 0) + (progRes.count || 0),
+        pendientes: pendientesRes.count || 0,
         completados: compRes.count || 0,
         errores: errRes.count || 0,
       })
@@ -259,63 +240,7 @@ export default function Documentos() {
     finally { setUploading(false) }
   }
 
-  // ── Iniciar análisis de TODOS los documentos pendientes ──
-  const handleStartAnalysis = async () => {
-    const pendientes = uploaded.filter(d => d.estado !== 'completado' || !d.estado)
 
-    if (pendientes.length === 0) {
-      alert('No hay documentos pendientes. Si quieres re-analizar, elimina el documento y súbelo de nuevo.')
-      return
-    }
-
-    setAnalyzing(true)
-
-    await fetchHistory()
-
-    // Usar máquinas seleccionadas
-    const seleccionadas = maquinasDisponibles.filter(m => selectedMaquinas[m.nombre])
-    if (seleccionadas.length === 0) {
-      alert('Selecciona al menos una máquina.')
-      setAnalyzing(false); return
-    }
-
-    const comandos = seleccionadas.map(m => ({
-      maquina_destino: m.nombre, comando: 'iniciar',
-      parametros: { workers_config: workersConfig, documento_id: null, documento_nombre: 'todos' },
-      estado: 'pendiente',
-    }))
-    await supabase.from('comandos_bot').insert(comandos)
-
-    // Marcar pendientes como analizando
-    for (const doc of pendientes) {
-      await supabase.from('documentos').update({ estado: 'analizando' }).eq('id', doc.id)
-    }
-    await fetchHistory()
-
-    // Monitorear progreso de todos los documentos
-    const interval = setInterval(async () => {
-      const docs = await supabase.from('documentos').select('id,total_dnis,procesados').order('created_at', { ascending: false }).limit(100)
-      if (docs.data) {
-        let todosTerminados = true
-        for (const d of docs.data) {
-          const { count } = await supabase.from('lineas').select('id', { count: 'exact', head: true })
-            .filter('atributos_dinamicos->>documento_id', 'eq', String(d.id))
-            .not('atributos_dinamicos->>estado', 'eq', 'pendiente')
-          const proc = parseInt(count) || 0
-          if (proc >= d.total_dnis) {
-            await supabase.from('documentos').update({ estado: 'completado', procesados: proc }).eq('id', d.id)
-          } else {
-            todosTerminados = false
-          }
-        }
-        await fetchHistory()
-        if (todosTerminados) {
-          clearInterval(interval)
-          setAnalyzing(false)
-        }
-      }
-    }, 3000)
-  }
 
   const toggleDay = async (dia, docs) => {
     if (expandedDay === dia) {
@@ -562,10 +487,6 @@ export default function Documentos() {
                       </div>
                       <div className="flex items-center gap-2 text-[10px] text-oratioo-gray flex-shrink-0">
                         <span>{d.total_dnis || 0} DNIs</span>
-                        <span>·</span>
-                        <span className={completo ? 'text-emerald-600 font-medium' : d.estado === 'analizando' ? 'text-purple-600 font-medium' : 'text-amber-600'}>
-                          {completo ? 'Completo' : d.estado === 'analizando' ? 'Analizando' : 'Pendiente'}
-                        </span>
                         <button onClick={() => handleDeleteDocument(d)}
                           className="p-0.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                           title="Eliminar">

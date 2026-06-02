@@ -10,7 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Shield,
-  Package,
+
   ChevronDown,
   Globe,
   Loader2,
@@ -41,12 +41,7 @@ const GROUPS = [
         label: "Analizar Clientes",
         badge: null,
       },
-      {
-        to: "/lotes",
-        icon: Package,
-        label: "Asignar Leads",
-        badge: null,
-      },
+
     ],
   },
 
@@ -88,7 +83,6 @@ export default function Sidebar({ onLogout }) {
     '/clientes': { asesor: false, supervisor: true, back_office: true, it: true, jefe_area: true, desarrollador: true },
     '/configurar-bot': { asesor: false, supervisor: false, back_office: false, it: true, jefe_area: true, desarrollador: true },
     '/documentos': { asesor: false, supervisor: true, back_office: true, it: true, jefe_area: true, desarrollador: true },
-    '/lotes': { asesor: false, supervisor: true, back_office: false, it: false, jefe_area: true, desarrollador: true },
 
     '/admin/users': { asesor: false, supervisor: false, back_office: false, it: false, jefe_area: true, desarrollador: true },
   }
