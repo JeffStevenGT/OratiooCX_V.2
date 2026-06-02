@@ -71,25 +71,35 @@ def cargar_proxies():
             continue
         partes = l.split(":")
         if len(partes) == 4:
-            ip, puerto, user, pwd = partes
-            proxy_url = f"http://{user}:{pwd}@{ip}:{puerto}"
-            proxies.append(proxy_url)
+            proxies.append({
+                "server": f"http://{partes[0]}:{partes[1]}",
+                "username": partes[2],
+                "password": partes[3],
+            })
         elif len(partes) == 2:
-            proxy_url = f"http://{partes[0]}:{partes[1]}"
-            proxies.append(proxy_url)
+            proxies.append({"server": f"http://{partes[0]}:{partes[1]}"})
     log(f"[PROXY] {len(proxies)} proxy(es) cargados")
     return proxies
 
 
-def iniciar_navegador(proxy_url=None):
+def iniciar_navegador(proxy_conf=None):
     from playwright.sync_api import sync_playwright
     p = sync_playwright().start()
     launch_kwargs = {"headless": False}
-    if proxy_url:
-        launch_kwargs["proxy"] = {"server": proxy_url}
-        log(f"[PROXY] Usando: {proxy_url[:60]}...")
+    if proxy_conf:
+        launch_kwargs["proxy"] = {"server": proxy_conf["server"]}
+        log(f"[PROXY] Usando: {proxy_conf['server']}")
     browser = p.chromium.launch(**launch_kwargs)
-    page = browser.new_page(viewport={"width": 1366, "height": 768})
+    # Autenticar proxy a nivel de contexto (NO en la URL)
+    ctx_kwargs = {"viewport": {"width": 1366, "height": 768}}
+    if proxy_conf and proxy_conf.get("username"):
+        ctx_kwargs["http_credentials"] = {
+            "username": proxy_conf["username"],
+            "password": proxy_conf["password"],
+        }
+        log(f"[PROXY] Auth: {proxy_conf['username']}:*****")
+    context = browser.new_context(**ctx_kwargs)
+    page = context.new_page()
     return p, browser, page
 
 
@@ -259,7 +269,7 @@ def dump_tabs(page, bloque, dni_idx):
             log(f"      [Tab {t_idx}] ERROR: {e}")
 
 
-def procesar_worker(dnis_chunk, worker_id, proxy_url):
+def procesar_worker(dnis_chunk, worker_id, proxy_conf):
     """Procesa un chunk de DNIs en un proceso separado."""
     # Log individual por worker
     log_file = Path(__file__).parent / f"piloto_logs_w{worker_id}.txt"
@@ -271,11 +281,11 @@ def procesar_worker(dnis_chunk, worker_id, proxy_url):
 
     wlog(f"[Worker {worker_id}] {len(dnis_chunk)} DNIs asignados")
     wlog(f"[Worker {worker_id}] Primeros: {dnis_chunk[:3]}")
-    if proxy_url:
-        wlog(f"[Worker {worker_id}] Proxy: {proxy_url[:60]}...")
+    if proxy_conf:
+        wlog(f"[Worker {worker_id}] Proxy: {proxy_conf['server']}")
     wlog("=" * 80)
 
-    p, browser, page = iniciar_navegador(proxy_url)
+    p, browser, page = iniciar_navegador(proxy_conf)
     try:
         login_orange(page)
     except Exception as e:
