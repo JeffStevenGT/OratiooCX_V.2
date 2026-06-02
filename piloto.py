@@ -54,10 +54,37 @@ def extraer_dnis(texto):
 #  PLAYWRIGHT - NAVEGACIÓN ORANGE
 # ═══════════════════════════════════════════════════════════════
 
-def iniciar_navegador():
+def cargar_proxies():
+    """Carga proxies de proxies.txt."""
+    prox_file = Path(__file__).parent / "proxies.txt"
+    if not prox_file.exists():
+        log("[PROXY] No hay proxies.txt — sin proxy")
+        return []
+    proxies = []
+    for linea in prox_file.read_text(encoding="utf-8").split("\n"):
+        l = linea.strip()
+        if not l or l.startswith("#"):
+            continue
+        partes = l.split(":")
+        if len(partes) == 4:
+            ip, puerto, user, pwd = partes
+            proxy_url = f"http://{user}:{pwd}@{ip}:{puerto}"
+            proxies.append(proxy_url)
+        elif len(partes) == 2:
+            proxy_url = f"http://{partes[0]}:{partes[1]}"
+            proxies.append(proxy_url)
+    log(f"[PROXY] {len(proxies)} proxy(es) cargados")
+    return proxies
+
+
+def iniciar_navegador(proxy_url=None):
     from playwright.sync_api import sync_playwright
     p = sync_playwright().start()
-    browser = p.chromium.launch(headless=False)
+    launch_kwargs = {"headless": False}
+    if proxy_url:
+        launch_kwargs["proxy"] = {"server": proxy_url}
+        log(f"[PROXY] Usando: {proxy_url[:60]}...")
+    browser = p.chromium.launch(**launch_kwargs)
     page = browser.new_page(viewport={"width": 1366, "height": 768})
     return p, browser, page
 
@@ -239,8 +266,14 @@ def procesar_dnis():
     log(f"[INICIO] Primeros: {dnis[:5]}")
     log("=" * 80)
 
+    # Cargar proxies y elegir uno al azar
+    proxies = cargar_proxies()
+    proxy_url = random.choice(proxies) if proxies else None
+    if proxy_url:
+        log(f"[PROXY] Proxy elegido: {proxy_url[:60]}...")
+
     # Iniciar navegador
-    p, browser, page = iniciar_navegador()
+    p, browser, page = iniciar_navegador(proxy_url)
     login_orange(page)
     log("=" * 80)
 
