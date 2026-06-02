@@ -534,6 +534,41 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     if renove_timeout:
                         raise Exception(f"Renove no cargó para {numero}")
 
+                    # ── LOG VERBOSE (SOLO primeros 100 DNIs) ──
+                    import os
+                    _verbose_counter = getattr(extraer_datos_cliente, '_verbose_count', 0)
+                    if _verbose_counter < 100:
+                        extraer_datos_cliente._verbose_count = _verbose_counter + 1
+                        try:
+                            tab_bar = bloque.locator(".client-tariff-section-navs")
+                            if tab_bar.count() > 0:
+                                tabs = tab_bar.locator("button.Title")
+                                num_tabs = tabs.count()
+                                print(f"      [VERBOSE] #{_verbose_counter+1} | {num_tabs} pestañas:")
+                                for t_idx in range(num_tabs):
+                                    try:
+                                        nombre_tab = tabs.nth(t_idx).inner_text().strip()
+                                        tabs.nth(t_idx).click(timeout=5000)
+                                        page.wait_for_timeout(300)
+                                        cards_container = bloque.locator(".client-tariff-section-cards")
+                                        if cards_container.count() > 0:
+                                            cards = cards_container.locator(".card-tariff-minimal")
+                                            print(f"      [VERBOSE]   [{nombre_tab}] {cards.count()} cards")
+                                            for c_idx in range(cards.count()):
+                                                try:
+                                                    card_text = cards.nth(c_idx).inner_text().strip()
+                                                    if len(card_text) > 400:
+                                                        card_text = card_text[:400] + "..."
+                                                    print(f"      [VERBOSE]     Card '{card_text}'")
+                                                except:
+                                                    pass
+                                        else:
+                                            print(f"      [VERBOSE]   [{nombre_tab}] sin cards")
+                                    except:
+                                        pass
+                        except:
+                            pass
+
                     lineas_finales.append({
                         "DNI": dni,
                         "Nombre": nombre,
