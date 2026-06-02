@@ -600,4 +600,3 @@ def verificar_sesion_valida(page: Page) -> bool:
         return True
     except Exception:
         return False
-
