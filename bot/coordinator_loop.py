@@ -82,13 +82,13 @@ def spawn_workers(count: int):
 
     for i in range(count):
         p = subprocess.Popen(
-            [sys.executable, str(BOT_DIR / "worker_loop.py"), "--proxy"],
+            [sys.executable, str(BOT_DIR / "worker_loop.py"), "--proxy", "--worker-id", str(i)],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
         )
         processes.append(p)
-        print(f"  Worker {i+1} PID {p.pid}")
+        print(f"  Worker {i+1} PID {p.pid} (proxy #{i})")
 
     print(f"[COORDINATOR] {count} workers activos.\n")
 
@@ -99,7 +99,7 @@ def restart_dead_workers():
             rc = p.returncode
             print(f"[COORDINATOR] Worker {i+1} murió (exit={rc}). Reiniciando...")
             processes[i] = subprocess.Popen(
-                [sys.executable, str(BOT_DIR / "worker_loop.py"), "--proxy"],
+                [sys.executable, str(BOT_DIR / "worker_loop.py"), "--proxy", "--worker-id", str(i)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,

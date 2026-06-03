@@ -169,24 +169,53 @@ def login_loop(page):
 # ═══════════════════════════════════════════
 # MAIN LOOP
 # ═══════════════════════════════════════════
+def cargar_proxies():
+    """Carga todos los proxies desde proxies.txt (raíz del proyecto)."""
+    # Buscar en raíz del proyecto (../proxies.txt) o en bot/proxies.txt
+    for candidate in [
+        Path(__file__).parent.parent / "proxies.txt",
+        Path(__file__).parent / "proxies.txt",
+    ]:
+        if candidate.exists():
+            proxies = []
+            for l in candidate.read_text().split("\n"):
+                l = l.strip()
+                if l and not l.startswith("#"):
+                    p = l.split(":")
+                    if len(p) >= 2:
+                        proxy = {"server": f"http://{p[0]}:{p[1]}"}
+                        if len(p) >= 4:
+                            proxy["username"] = p[2]
+                            proxy["password"] = p[3]
+                        proxies.append(proxy)
+            return proxies, str(candidate)
+    return [], "no encontrado"
+
+
 def main():
     use_proxy = "--proxy" in sys.argv
+
+    # Obtener worker ID (para proxies rotativos)
+    worker_id = None
+    if "--worker-id" in sys.argv:
+        idx = sys.argv.index("--worker-id")
+        worker_id = int(sys.argv[idx + 1])
 
     # Cargar proxy
     proxy_conf = None
     if use_proxy:
-        pf = Path(__file__).parent / "proxies.txt"
-        if pf.exists():
-            for l in pf.read_text().split("\n"):
-                l=l.strip()
-                if l and not l.startswith("#"):
-                    p=l.split(":")
-                    if len(p)==4:
-                        proxy_conf={"server":f"http://{p[0]}:{p[1]}","username":p[2],"password":p[3]}
-                        break
+        proxies, pf_path = cargar_proxies()
+        if proxies:
+            # Each worker gets its own proxy by index
+            idx = (worker_id or 0) % len(proxies)
+            proxy_conf = proxies[idx]
+            print(f"[START] {len(proxies)} proxies cargados de {pf_path}")
+            print(f"[START] Worker {worker_id or 0} usando proxy #{idx}: {proxy_conf['server']}")
+        else:
+            print(f"[START] ⚠️ No se encontraron proxies en {pf_path}")
 
     print(f"[START] Bot Orange - Backend: {BACKEND_URL}")
-    print(f"[START] Proxy: {proxy_conf['server'] if proxy_conf else 'NINGUNO'}")
+    print(f"[START] Proxy: {proxy_conf['server'] if proxy_conf else 'NINGUNO (⚠️ Orange no abre sin IP española)'}")
     print("[START] Ctrl+C para detener")
 
     pw = sync_playwright().start()
