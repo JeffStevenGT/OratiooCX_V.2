@@ -73,12 +73,34 @@ def kill_all_workers():
     processes = []
     print("[COORDINATOR] Todos los workers detenidos.")
 
+
+def rescue_stale_dnis(minutos: int = 5):
+    """Rescata DNIs atascados en 'en_progreso' por workers zombies."""
+    try:
+        r = requests.post(
+            f"{BACKEND_URL}/api/bot/reset-stale",
+            json={"minutos": minutos},
+            headers=_api_headers,
+            timeout=10,
+        )
+        if r.ok:
+            rescatados = r.json().get("rescatados", 0)
+            if rescatados > 0:
+                print(f"[COORDINATOR] 🔄 {rescatados} DNIs atascados rescatados → pendiente")
+        return r.ok
+    except Exception as e:
+        print(f"[COORDINATOR] Error rescatando DNIs: {e}")
+        return False
+
 def spawn_workers(count: int, machine_name: str):
     global processes
     kill_all_workers()
 
     count = max(1, min(count, 20))
     print(f"[COORDINATOR] Lanzando {count} worker(s)...")
+
+    # Rescatar DNIs atascados del arranque anterior
+    rescue_stale_dnis(minutos=1)  # 1 min — solo los realmente zombies
 
     for i in range(count):
         p = subprocess.Popen(
@@ -190,10 +212,18 @@ def main():
 
     # Loop principal
     last_alive = 0
+    last_rescue = 0
+    RESCUE_INTERVAL = 120  # cada 2 minutos
     while True:
         try:
             # Heartbeat
             send_heartbeat(machine_name)
+
+            # Rescatar DNIs atascados periódicamente (workers zombies)
+            now_ts = time.time()
+            if processes and now_ts - last_rescue > RESCUE_INTERVAL:
+                rescue_stale_dnis(minutos=5)
+                last_rescue = now_ts
 
             # Poll comandos (solo los de esta máquina)
             for cmd in poll_commands(machine_name):
