@@ -80,9 +80,9 @@ def next_dni():
     data = api_get("/api/bot/next-dni")
     return data.get("dni") if data else None
 
-def check_command():
+def check_command(machine_name: str = "localhost"):
     """Retorna lista de comandos como objetos {comando, parametros}."""
-    data = api_get("/api/bot/command")
+    data = api_get(f"/api/bot/command?maquina={machine_name}")
     if not data:
         return []
     # comandos ahora vienen como objetos, no strings
@@ -201,6 +201,12 @@ def main():
         idx = sys.argv.index("--worker-id")
         worker_id = int(sys.argv[idx + 1])
 
+    # Nombre de máquina (para filtrar comandos)
+    machine_name = "localhost"
+    if "--machine" in sys.argv:
+        idx = sys.argv.index("--machine")
+        machine_name = sys.argv[idx + 1]
+
     # Cargar proxy
     proxy_conf = None
     if use_proxy:
@@ -215,6 +221,7 @@ def main():
             print(f"[START] ⚠️ No se encontraron proxies en {pf_path}")
 
     print(f"[START] Bot Orange - Backend: {BACKEND_URL}")
+    print(f"[START] Máquina: {machine_name} | Worker ID: {worker_id or 0}")
     print(f"[START] Proxy: {proxy_conf['server'] if proxy_conf else 'NINGUNO (⚠️ Orange no abre sin IP española)'}")
     print("[START] Ctrl+C para detener")
 
@@ -238,7 +245,7 @@ def main():
 
     while not detenido:
         # Verificar comandos del frontend
-        for cmd_obj in check_command():
+        for cmd_obj in check_command(machine_name):
             cmd = cmd_obj.get("comando", "") if isinstance(cmd_obj, dict) else cmd_obj
             params = cmd_obj.get("parametros", {}) if isinstance(cmd_obj, dict) else {}
             print(f"[CMD] Recibido: {cmd} {params}")

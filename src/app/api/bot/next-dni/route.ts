@@ -9,7 +9,7 @@ export async function GET() {
   try {
     const { rows } = await pool.query(`
       WITH tomado AS (
-        SELECT cp.id_cp, cp.id_cliente
+        SELECT cp.id, cp.id_cliente
         FROM clientes_proyectos cp
         WHERE cp.proyecto_id = 1
           AND cp.datos->>'estado' = 'pendiente'
@@ -20,7 +20,7 @@ export async function GET() {
       SET datos = jsonb_set(datos, '{estado}', '"en_progreso"'),
           updated_at = now()
       FROM tomado
-      WHERE cp.id_cp = tomado.id_cp
+      WHERE cp.id = tomado.id
       RETURNING cp.id_cliente
     `);
     if (rows.length === 0) return NextResponse.json({ dni: null });
