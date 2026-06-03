@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import bcrypt from 'bcryptjs';
+import { requireRole } from '@/lib/auth-roles';
 
 // GET — listar con filtros
 export async function GET(req: Request) {
@@ -34,6 +35,7 @@ export async function GET(req: Request) {
 // POST — crear usuario
 export async function POST(req: Request) {
   try {
+    await requireRole('jefe_area', 'desarrollador');
     const { email, nombre, password, rol, equipo, supervisor_id } = await req.json();
     if (!email || !nombre || !password || !rol) {
       return NextResponse.json({ error: 'Faltan campos' }, { status: 400 });

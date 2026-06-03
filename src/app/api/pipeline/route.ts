@@ -4,10 +4,12 @@
 
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { requireRole } from '@/lib/auth-roles';
 
 // GET — leads sin asignar (pool), filtrable
 export async function GET(req: Request) {
   try {
+    await requireRole('jefe_area', 'supervisor', 'desarrollador');
     const { searchParams } = new URL(req.url);
     const cima = searchParams.get('cima');
     const renove = searchParams.get('renove');
@@ -77,6 +79,7 @@ export async function GET(req: Request) {
 // POST — asignar leads
 export async function POST(req: Request) {
   try {
+    await requireRole('jefe_area', 'supervisor', 'desarrollador');
     const { leads, asesor_id } = await req.json();
     if (!leads?.length || !asesor_id) {
       return NextResponse.json({ error: 'Faltan leads o asesor_id' }, { status: 400 });
