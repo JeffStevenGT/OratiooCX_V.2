@@ -16,7 +16,7 @@ const TIPOS = [
   { key: 'tipificacion', label: 'Tipificaciones', icon: AlertTriangle },
 ];
 
-type Stats = { totalClientes: number; pendientes: number; completados: number; errores: number; maquinasOnline: number; totalProxies: number; workersActivos: number };
+type Stats = { totalClientes: number; pendientes: number; completados: number; errores: number; maquinasOnline: number; workersActivos: number };
 type Evento = { id: number; id_cliente: string; dni: string; nombre_cliente: string; tipo: string; descripcion: string; asesor_nombre: string | null; created_at: string };
 
 export default function AdminPage() {
@@ -63,8 +63,8 @@ export default function AdminPage() {
       </div>
       <div className="grid grid-cols-3 gap-4">
         <MiniKPI icon={Server} label="Máquinas online" value={stats?.maquinasOnline || 0} color="text-blue-500" />
-        <MiniKPI icon={Wifi} label="Proxies" value={stats?.totalProxies || 0} color="text-indigo-500" />
         <MiniKPI icon={Activity} label="Workers activos" value={stats?.workersActivos || 0} color="text-emerald-500" />
+        <MiniKPI icon={Users} label="Tasa completados" value={`${stats ? Math.round((stats.completados / Math.max(stats.totalClientes || 1, 1)) * 100) : 0}%`} color="text-purple-500" />
       </div>
 
       {/* Auditoría */}
