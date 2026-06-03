@@ -54,6 +54,11 @@ export async function GET(req: Request) {
         tiene_renove: tieneRenove ? 'SI' : 'NO',
         renove_variante: variante,
         lineas_count: lineas.length,
+        lineas: lineas.map((l: any) => ({
+          numero: l.numero, es_cima: l.es_cima || false,
+          tiene_renove: l.tiene_renove || false, variante_renove: l.variante_renove || 'N/A',
+          etiquetas: l.etiquetas || [], es_principal: l.es_principal || false,
+        })),
       };
     }));
 

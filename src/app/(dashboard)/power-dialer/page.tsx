@@ -4,17 +4,19 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Phone, Loader2, User, Star, Gift, AlertTriangle, ChevronLeft, ChevronRight, Smartphone } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Phone, Loader2, User, Star, Gift, AlertTriangle, ChevronLeft, ChevronRight, Smartphone, PhoneCall } from 'lucide-react';
 
-type Lead = { id_cliente: string; dni: string; nombre: string; linea_principal: string; paquete: string; cima: string; tiene_renove: string; renove_variante: string; lineas_count: number; pipeline_id: number };
+type LineaInfo = { numero: string; es_cima: boolean; tiene_renove: boolean; variante_renove: string; etiquetas: string[]; es_principal: boolean };
+type Lead = { id_cliente: string; dni: string; nombre: string; paquete: string; cima: string; tiene_renove: string; renove_variante: string; lineas_count: number; pipeline_id: number; lineas: LineaInfo[] };
 
 export default function PowerDialerPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [current, setCurrent] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [calling, setCalling] = useState(false);
+  const [calling, setCalling] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
+  const lastCallRef = useRef(0);
 
   useEffect(() => {
     const fetchLeads = async () => {
@@ -23,11 +25,8 @@ export default function PowerDialerPage() {
         const session = await sessionRes.json();
         const userId = session?.user?.id;
         if (!userId) return;
-
-        // Obtener leads asignados a este asesor con datos del bot
         const res = await fetch(`/api/pipeline/mine?user_id=${userId}`);
-        const data = await res.json();
-        setLeads(data);
+        setLeads(await res.json());
       } catch { /* */ }
       setLoading(false);
     };
@@ -36,50 +35,51 @@ export default function PowerDialerPage() {
 
   const lead = leads[current];
 
-  const call = async () => {
+  const call = async (numero: string) => {
     if (!lead) return;
-    setCalling(true);
-    setMsg('Llamando...');
+    // Protección 5s debounce
+    const now = Date.now();
+    if (now - lastCallRef.current < 5000) {
+      setMsg('Esperá 5 segundos entre llamadas');
+      setTimeout(() => setMsg(''), 2000);
+      return;
+    }
+    lastCallRef.current = now;
+
+    setCalling(numero);
+    setMsg(`Llamando al ${numero}...`);
     try {
       await fetch('/api/vpbx/originate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ numero: lead.linea_principal }),
+        body: JSON.stringify({ numero }),
       });
-      // Marcar como contactado
       await fetch('/api/pipeline', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: lead.pipeline_id, estado: 'contactado' }),
       });
       setMsg('Llamada iniciada');
     } catch { setMsg('Error al llamar'); }
-    setCalling(false);
+    setCalling(null);
     setTimeout(() => setMsg(''), 3000);
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 size={32} className="animate-spin text-[#0a6ea9]" />
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <Loader2 size={32} className="animate-spin text-[#0a6ea9]" />
+    </div>
+  );
 
-  if (leads.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-4">
-        <Phone size={64} className="text-[#b8b0b8]" />
-        <div>
-          <h1 className="text-xl font-bold text-[#1a1030]">Power Dialer</h1>
-          <p className="text-sm text-[#7c757c] mt-1">No tenés leads asignados</p>
-          <p className="text-xs text-[#b8b0b8] mt-0.5">Pedile a tu supervisor que te asigne leads desde Asignar Leads</p>
-        </div>
-      </div>
-    );
-  }
+  if (leads.length === 0) return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-4">
+      <Phone size={64} className="text-[#b8b0b8]" />
+      <h1 className="text-xl font-bold text-[#1a1030]">Power Dialer</h1>
+      <p className="text-sm text-[#7c757c]">No tenés leads asignados</p>
+      <p className="text-xs text-[#b8b0b8]">Pedile a tu supervisor que te asigne leads</p>
+    </div>
+  );
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-[#1a1030]">Power Dialer</h1>
@@ -94,7 +94,6 @@ export default function PowerDialerPage() {
         </div>
       </div>
 
-      {/* Ficha del lead */}
       {lead && (
         <div className="card max-w-lg mx-auto">
           {/* Nombre y DNI */}
@@ -118,41 +117,52 @@ export default function PowerDialerPage() {
             </div>
           </div>
 
-          {/* Info del cliente */}
-          <div className="space-y-2 mb-6 bg-[#f8f7fa] rounded-lg p-4">
-            <div className="flex justify-between text-xs">
-              <span className="text-[#7c757c]">Línea principal</span>
-              <span className="font-mono font-medium">{lead.linea_principal}</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-[#7c757c]">Paquete</span>
-              <span className="text-right max-w-[200px] truncate">{lead.paquete}</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-[#7c757c]">Líneas totales</span>
-              <span>{lead.lineas_count}</span>
-            </div>
-            {lead.renove_variante && lead.renove_variante !== 'N/A' && (
-              <div className="flex justify-between text-xs">
-                <span className="text-[#7c757c]">Tipo Renove</span>
-                <span className="text-blue-600 font-medium text-right">{lead.renove_variante}</span>
-              </div>
-            )}
+          {/* Paquete */}
+          <div className="text-center mb-6 bg-[#f8f7fa] rounded-lg py-2 px-4">
+            <span className="text-[10px] text-[#7c757c]">Paquete: </span>
+            <span className="text-xs font-medium">{lead.paquete}</span>
           </div>
 
-          {/* Botón llamar */}
-          <button onClick={call} disabled={calling}
-            className="w-full bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl py-4 flex items-center justify-center gap-3 text-lg font-semibold transition-colors disabled:opacity-50">
-            {calling ? <Loader2 size={24} className="animate-spin" /> : <Phone size={24} />}
-            {calling ? 'Llamando...' : `Llamar al ${lead.linea_principal}`}
-          </button>
-          {msg && <p className="text-xs text-center mt-2 text-emerald-600">{msg}</p>}
+          {/* Líneas — cada una con su botón de llamar */}
+          <div className="space-y-2 mb-6">
+            <p className="text-[10px] font-semibold text-[#7c757c] uppercase tracking-wider">
+              Líneas ({lead.lineas?.length || 0})
+            </p>
+            {lead.lineas?.map((l, i) => (
+              <div key={i} className={`flex items-center justify-between p-2.5 rounded-lg border ${
+                l.es_principal ? 'border-[#0a6ea9] bg-blue-50' : 'border-[#e8dce6] bg-white'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <Smartphone size={14} className={l.es_principal ? 'text-[#0a6ea9]' : 'text-[#b8b0b8]'} />
+                  <span className="text-sm font-mono font-medium">{l.numero}</span>
+                  <div className="flex gap-1">
+                    {l.etiquetas?.map((t, j) => (
+                      <span key={j} className="text-[8px] bg-[#f0edf5] text-[#7c757c] rounded px-1">{t}</span>
+                    ))}
+                    {l.es_cima && <Star size={10} className="text-emerald-500" />}
+                    {l.tiene_renove && <Gift size={10} className="text-blue-500" />}
+                  </div>
+                </div>
+                <button onClick={() => call(l.numero)} disabled={calling === l.numero}
+                  className="flex items-center gap-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-40">
+                  {calling === l.numero ? <Loader2 size={12} className="animate-spin" /> : <PhoneCall size={12} />}
+                  Llamar
+                </button>
+              </div>
+            ))}
+          </div>
 
-          {/* Navegación */}
-          <div className="flex justify-between mt-4 text-xs text-[#7c757c]">
-            <button onClick={() => { setCurrent(0); }} className="hover:text-[#0a6ea9]">← Primero</button>
-            <span>{lead.linea_principal}</span>
-            <button onClick={() => { setCurrent(leads.length - 1); }} className="hover:text-[#0a6ea9]">Último →</button>
+          {msg && (
+            <p className={`text-xs text-center mb-2 ${msg.includes('Error') || msg.includes('Esperá') ? 'text-red-500' : 'text-emerald-600'}`}>
+              {msg}
+            </p>
+          )}
+
+          {/* Navegación rápida */}
+          <div className="flex justify-between text-xs text-[#7c757c]">
+            <button onClick={() => setCurrent(0)} className="hover:text-[#0a6ea9]">← Primero</button>
+            <span className="font-mono">{lead.dni}</span>
+            <button onClick={() => setCurrent(leads.length - 1)} className="hover:text-[#0a6ea9]">Último →</button>
           </div>
         </div>
       )}

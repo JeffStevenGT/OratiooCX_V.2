@@ -50,7 +50,7 @@ const MENU_ITEMS: {
   {
     label: 'Gestión',
     items: [
-      { to: '/tramitacion', icon: Package, label: 'Tramitación', roles: ['back_office'] },
+      { to: '/backoffice/tramitacion', icon: Package, label: 'Tramitación', roles: ['back_office'] },
       { to: '/asignar-leads', icon: UserPlus, label: 'Asignar Leads', roles: ['jefe_area', 'supervisor', 'desarrollador'] },
       { to: '/proyectos', icon: Globe, label: 'Proyectos', roles: ['jefe_area', 'desarrollador'] },
       { to: '/metas', icon: Target, label: 'Metas', roles: ['supervisor', 'jefe_area'] },
