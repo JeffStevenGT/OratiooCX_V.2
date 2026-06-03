@@ -7,7 +7,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Search, Loader2, RefreshCw, ArrowUpDown, ChevronDown, ChevronUp,
-  Download, Users, Building, User, Smartphone, PhoneOff, Gift,
+  Download, FileSpreadsheet, Users, Building, User, Smartphone, PhoneOff, Gift,
   Clock, TrendingUp, AlertTriangle, Star, StarOff, Tv,
   UserPlus, UserMinus, Package,
 } from 'lucide-react';
@@ -135,6 +135,16 @@ export default function ClientesPage() {
     URL.revokeObjectURL(url);
   };
 
+  const exportExcel = async () => {
+    const XLSX = await import('xlsx');
+    const headers = ['DNI', 'Nombre', 'CIMA', 'Línea', 'Paquete', 'Renove', 'Variante', 'Fecha', 'Hora'];
+    const rows = filtered.map(c => [c.dni, c.nombre, c.cima, c.linea_principal, c.paquete, c.tiene_renove, c.renove_variante, c.fecha, c.hora]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Clientes Orange');
+    XLSX.writeFile(wb, 'clientes_orange.xlsx');
+  };
+
   const SortHeader = ({ label, sk }: { label: string; sk: string }) => (
     <th className="table-header px-3 py-2.5 cursor-pointer hover:text-[#1a1030] select-none" onClick={() => toggleSort(sk)}>
       <div className="flex items-center gap-1">
@@ -172,8 +182,12 @@ export default function ClientesPage() {
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Refrescar
           </button>
           <button onClick={exportCSV} disabled={filtered.length === 0}
+            className="btn-outline flex items-center gap-1.5 text-xs px-3 py-1.5">
+            <Download size={12} /> CSV
+          </button>
+          <button onClick={exportExcel} disabled={filtered.length === 0}
             className="btn-primary flex items-center gap-1.5 text-xs px-3 py-1.5">
-            <Download size={12} /> Exportar CSV
+            <FileSpreadsheet size={12} /> Excel
           </button>
         </div>
       </div>
