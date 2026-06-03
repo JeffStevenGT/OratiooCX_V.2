@@ -5,14 +5,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Send, Loader2, CheckCircle2, Filter, UserPlus, UserCheck } from 'lucide-react';
+import { Users, Send, Loader2, CheckCircle2, Filter, UserPlus, Globe } from 'lucide-react';
 
 type Lead = { id_cliente: string; dni: string; nombre: string; tipo_persona: string; cima: string; tiene_renove: boolean; renove_variante: string; lineas_count: number; ultima_extraccion: string };
-type Asesor = { id: number; nombre: string; email: string };
+type Asesor = { id: number; nombre: string; email: string; equipo: string; rol: string };
 
 export default function AsignarLeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [asesores, setAsesores] = useState<Asesor[]>([]);
+  const [equipo, setEquipo] = useState('');
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [asesorId, setAsesorId] = useState('');
@@ -22,25 +23,25 @@ export default function AsignarLeadsPage() {
   const [renoveFilter, setRenoveFilter] = useState('');
   const [fechaFilter, setFechaFilter] = useState('');
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (cimaFilter) params.set('cima', cimaFilter);
-      if (renoveFilter) params.set('renove', renoveFilter);
-      if (fechaFilter) params.set('fecha', fechaFilter);
+  const fetchLeads = async () => {
+    const params = new URLSearchParams();
+    if (cimaFilter) params.set('cima', cimaFilter);
+    if (renoveFilter) params.set('renove', renoveFilter);
+    if (fechaFilter) params.set('fecha', fechaFilter);
 
-      const [lRes, aRes] = await Promise.all([
-        fetch(`/api/pipeline?${params}`),
-        fetch('/api/usuarios'),
-      ]);
-      setLeads(await lRes.json());
-      setAsesores(await aRes.json());
-    } catch { /* */ }
-    setLoading(false);
+    const res = await fetch(`/api/pipeline?${params}`);
+    setLeads(await res.json());
   };
 
-  useEffect(() => { fetchData(); }, [cimaFilter, renoveFilter, fechaFilter]);
+  const fetchAsesores = async (eq: string) => {
+    const params = new URLSearchParams();
+    if (eq) params.set('equipo', eq);
+    const res = await fetch(`/api/usuarios?${params}`);
+    setAsesores(await res.json());
+  };
+
+  useEffect(() => { setLoading(true); fetchLeads().finally(() => setLoading(false)); }, [cimaFilter, renoveFilter, fechaFilter]);
+  useEffect(() => { fetchAsesores(equipo); setAsesorId(''); }, [equipo]);
 
   const toggleAll = () => {
     if (selected.size === leads.length) setSelected(new Set());
@@ -63,14 +64,18 @@ export default function AsignarLeadsPage() {
         body: JSON.stringify({ leads: [...selected], asesor_id: parseInt(asesorId) }),
       });
       if (res.ok) {
-        setResultado(`${selected.size} leads asignados correctamente`);
+        const asesorNombre = asesores.find(a => a.id === parseInt(asesorId))?.nombre || 'asesor';
+        setResultado(`${selected.size} leads asignados a ${asesorNombre}`);
         setSelected(new Set());
-        fetchData();
+        fetchLeads();
       }
     } catch { setResultado('Error al asignar'); }
     setAsignando(false);
     setTimeout(() => setResultado(''), 4000);
   };
+
+  // Agrupar asesores por equipo para mostrar en dropdown
+  const equipos = [...new Set(asesores.map(a => a.equipo))].filter(Boolean);
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -102,20 +107,33 @@ export default function AsignarLeadsPage() {
 
       {/* Asignación */}
       {selected.size > 0 && (
-        <div className="card-sm bg-[#f0f4ff] border-[#c4d4f0] flex items-center gap-3">
-          <UserCheck size={16} className="text-[#0a6ea9]" />
+        <div className="card-sm bg-[#f0f4ff] border-[#c4d4f0] flex items-center gap-3 flex-wrap">
+          <UserPlus size={16} className="text-[#0a6ea9]" />
           <span className="text-sm font-medium text-[#1a1030]">{selected.size} seleccionados</span>
+
+          {/* Equipo */}
+          <div className="flex items-center gap-1.5">
+            <Globe size={12} className="text-[#7c757c]" />
+            <select value={equipo} onChange={e => setEquipo(e.target.value)}
+              className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white">
+              <option value="">Todos los equipos</option>
+              {equipos.map(eq => <option key={eq} value={eq}>{eq}</option>)}
+            </select>
+          </div>
+
+          {/* Asesor */}
           <select value={asesorId} onChange={e => setAsesorId(e.target.value)}
-            className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white">
+            className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white min-w-[180px]">
             <option value="">Elegir asesor...</option>
-            {asesores.map(a => (
-              <option key={a.id} value={a.id}>{a.nombre}</option>
+            {asesores.filter(a => a.rol === 'asesor').map(a => (
+              <option key={a.id} value={a.id}>{a.nombre} ({a.equipo})</option>
             ))}
           </select>
+
           <button onClick={asignar} disabled={!asesorId || asignando}
             className="btn-primary flex items-center gap-1.5 text-xs px-4 py-1.5 disabled:opacity-40">
             {asignando ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-            Asignar {selected.size} leads
+            Asignar
           </button>
           {resultado && (
             <span className="text-xs text-emerald-600 flex items-center gap-1">
@@ -141,7 +159,7 @@ export default function AsignarLeadsPage() {
               <thead>
                 <tr className="border-b border-[#e8dce6] bg-[#f8f7fa]">
                   <th className="px-3 py-2.5 w-10">
-                    <input type="checkbox" checked={selected.size === leads.length} onChange={toggleAll}
+                    <input type="checkbox" checked={selected.size === leads.length && leads.length > 0} onChange={toggleAll}
                       className="rounded border-[#d0d0e0] w-3.5 h-3.5" />
                   </th>
                   <th className="table-header px-3 py-2.5 text-left">DNI</th>
