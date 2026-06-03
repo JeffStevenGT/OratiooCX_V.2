@@ -193,6 +193,7 @@ def main():
     print(f"[COORDINATOR] Backend: {BACKEND_URL}")
     print(f"[COORDINATOR] Heartbeat cada {HEARTBEAT_INTERVAL}s | Comandos cada {POLL_INTERVAL}s")
     print(f"[COORDINATOR] Solo responde a comandos para '{machine_name}' o '*'")
+    print(f"[COORDINATOR] Liberación automática de leads inactivos: 2 AM cada noche")
 
     if start_workers:
         print(f"[COORDINATOR] Arranque directo con {start_workers} workers")
@@ -213,11 +214,34 @@ def main():
     # Loop principal
     last_alive = 0
     last_rescue = 0
+    last_release_check = 0
     RESCUE_INTERVAL = 120  # cada 2 minutos
+    RELEASE_INTERVAL = 3600  # verificar cada hora
     while True:
         try:
             # Heartbeat
             send_heartbeat(machine_name)
+
+            # Liberar leads inactivos (una vez al día, de madrugada)
+            now_ts = time.time()
+            now_dt = datetime.now()
+            if now_ts - last_release_check > RELEASE_INTERVAL:
+                last_release_check = now_ts
+                # Solo ejecutar entre 2 AM y 3 AM (hora local)
+                if 2 <= now_dt.hour < 3:
+                    try:
+                        r = requests.post(
+                            f"{BACKEND_URL}/api/pipeline/release-stale",
+                            json={"dias": 3},
+                            headers=_api_headers,
+                            timeout=30,
+                        )
+                        if r.ok:
+                            data = r.json()
+                            if data.get("liberados", 0) > 0:
+                                print(f"[COORDINATOR] 🔓 {data['liberados']} leads liberados por inactividad (>3 días)")
+                    except Exception as e:
+                        print(f"[COORDINATOR] Error liberando leads: {e}")
 
             # Rescatar DNIs atascados periódicamente (workers zombies)
             now_ts = time.time()

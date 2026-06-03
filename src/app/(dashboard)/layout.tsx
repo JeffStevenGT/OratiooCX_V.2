@@ -11,6 +11,7 @@ export default async function DashboardLayout({
   if (!session?.user) redirect('/login');
 
   const user = {
+    id: (session.user as any).id || '0',
     name: session.user.name || 'Usuario',
     email: session.user.email || '',
     userRole: (session.user as any).role || 'asesor',
@@ -18,7 +19,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen bg-[#f5f5fa]">
-      <Sidebar userName={user.name} userRole={user.userRole} />
+      <Sidebar userName={user.name} userRole={user.userRole} userId={user.id} />
       <main className="flex-1 p-8 overflow-auto">
         <div className="max-w-7xl mx-auto">
           {children}

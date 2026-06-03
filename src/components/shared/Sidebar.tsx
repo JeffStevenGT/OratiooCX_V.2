@@ -11,6 +11,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
+import NotificationBadge from './NotificationBadge';
 import {
   LayoutDashboard, Users, Settings, Upload, LogOut,
   Shield, Phone, Calendar, BookOpen, Package, Globe,
@@ -20,6 +21,7 @@ import {
 interface SidebarProps {
   userName: string;
   userRole: string;
+  userId?: string;
 }
 
 // Menú completo por grupos
@@ -72,7 +74,7 @@ const MENU_ITEMS: {
   },
 ];
 
-export default function Sidebar({ userName, userRole }: SidebarProps) {
+export default function Sidebar({ userName, userRole, userId }: SidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -91,6 +93,7 @@ export default function Sidebar({ userName, userRole }: SidebarProps) {
               O
             </div>
             <span className="text-sm font-bold text-white">Oratioo CX</span>
+            <NotificationBadge userId={userId} userRole={userRole} />
           </>
         )}
       </div>
