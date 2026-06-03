@@ -222,7 +222,7 @@ def main():
             # Rescatar DNIs atascados periódicamente (workers zombies)
             now_ts = time.time()
             if processes and now_ts - last_rescue > RESCUE_INTERVAL:
-                rescue_stale_dnis(minutos=10)  # 10 min — los vivos hacen touch
+                rescue_stale_dnis(minutos=30)  # 30 min — Pangea puede estar caída por horas
                 last_rescue = now_ts
 
             # Poll comandos (solo los de esta máquina)

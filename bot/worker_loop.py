@@ -159,8 +159,11 @@ def extraer_datos_estructurados(page, dni):
 # ═══════════════════════════════════════════
 # LOGIN
 # ═══════════════════════════════════════════
-def login_loop(page):
+def login_loop(page, dni_touch: str = None):
     for intento in range(999):
+        # Mantener vivo el DNI mientras reintentamos login
+        if dni_touch:
+            touch_dni(dni_touch)
         try:
             page.goto(ORANGE_URL, timeout=90000)
             manejar_cookies_flexible(page)
@@ -316,7 +319,7 @@ def main():
             errores += 1
             try:
                 page.reload(timeout=30000)
-                login_loop(page)
+                login_loop(page, dni_touch=id_cliente)
             except:
                 pass
 
@@ -325,7 +328,7 @@ def main():
             errores += 1
             try:
                 page.reload(timeout=30000)
-                login_loop(page)
+                login_loop(page, dni_touch=id_cliente)
             except:
                 print("  -> [FATAL] No se pudo recuperar")
                 detenido = True
