@@ -43,6 +43,7 @@ export default function ClientesPage() {
   const [expandido, setExpandido] = useState<string | null>(null);
   const [editingTipo, setEditingTipo] = useState<string | null>(null);
   const [deteccionesCache, setDeteccionesCache] = useState<Record<string, any[]>>({});
+  const [timelineCache, setTimelineCache] = useState<Record<string, any[]>>({});
   const [loadingDetecciones, setLoadingDetecciones] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -275,9 +276,14 @@ export default function ClientesPage() {
                         if (nuevo && !deteccionesCache[nuevo]) {
                           setLoadingDetecciones(true);
                           try {
-                            const res = await fetch(`/api/clientes/${nuevo}`);
-                            const data = await res.json();
-                            setDeteccionesCache(prev => ({ ...prev, [nuevo]: data.detecciones || [] }));
+                            const [detRes, tlRes] = await Promise.all([
+                              fetch(`/api/clientes/${nuevo}`),
+                              fetch(`/api/auditoria?tipo=&limit=20`),
+                            ]);
+                            const detData = await detRes.json();
+                            const tlData = await tlRes.json();
+                            setDeteccionesCache(prev => ({ ...prev, [nuevo]: detData.detecciones || [] }));
+                            setTimelineCache(prev => ({ ...prev, [nuevo]: tlData.filter((e: any) => e.id_cliente === nuevo) }));
                           } catch { /* */ }
                           setLoadingDetecciones(false);
                         }
@@ -423,6 +429,29 @@ export default function ClientesPage() {
                                 <div className="flex flex-wrap gap-1">
                                   {deteccionesCache[c.id_cliente].map((d: any, i: number) => (
                                     <CambioBadge key={i} deteccion={d} />
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Timeline */}
+                            {timelineCache[c.id_cliente] && timelineCache[c.id_cliente].length > 0 && (
+                              <div>
+                                <h4 className="text-xs font-semibold text-[#1a1030] mb-2">📋 Historial</h4>
+                                <div className="space-y-1 max-h-48 overflow-y-auto">
+                                  {timelineCache[c.id_cliente].slice(0, 15).map((h: any, i: number) => (
+                                    <div key={i} className="flex items-start gap-2 text-[10px]">
+                                      <span className="text-[#b8b0b8] whitespace-nowrap">
+                                        {h.created_at ? new Date(h.created_at).toLocaleString('es-PE') : '—'}
+                                      </span>
+                                      <span className={`rounded px-1.5 py-0.5 text-[8px] font-medium ${
+                                        h.tipo === 'extraccion' ? 'bg-purple-100 text-purple-700' :
+                                        h.tipo === 'llamada' ? 'bg-blue-100 text-blue-700' :
+                                        h.tipo === 'asignacion' ? 'bg-emerald-100 text-emerald-700' :
+                                        'bg-gray-100 text-gray-600'
+                                      }`}>{h.tipo}</span>
+                                      <span className="text-[#7c757c]">{h.descripcion}</span>
+                                    </div>
                                   ))}
                                 </div>
                               </div>
