@@ -133,14 +133,17 @@ export async function DELETE(req: Request) {
 // PATCH — actualizar estado de pipeline
 export async function PATCH(req: Request) {
   try {
-    const { id, estado } = await req.json();
-    if (!id || !estado) return NextResponse.json({ error: 'Falta id o estado' }, { status: 400 });
+    const { id, estado, notas } = await req.json();
+    if (!id) return NextResponse.json({ error: 'Falta id' }, { status: 400 });
 
-    await pool.query(
-      `UPDATE pipeline SET estado = $1, ultimo_cambio = now() WHERE id = $2 AND deleted_at IS NULL`,
-      [estado, id]
-    );
+    const updates = ['ultimo_cambio = now()'];
+    const params: any[] = [];
+    let pi = 1;
+    if (estado) { updates.push(`estado = $${pi++}`); params.push(estado); }
+    if (notas !== undefined) { updates.push(`notas = $${pi++}`); params.push(notas); }
+    params.push(id);
 
+    await pool.query(`UPDATE pipeline SET ${updates.join(', ')} WHERE id = $${pi} AND deleted_at IS NULL`, params);
     return NextResponse.json({ success: true });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

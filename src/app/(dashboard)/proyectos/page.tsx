@@ -5,7 +5,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Globe, Play, Pause, Loader2, Users, BarChart3 } from 'lucide-react';
+import { Globe, Play, Pause, Loader2, Users, BarChart3, Plus } from 'lucide-react';
 
 type Proyecto = { id: number; nombre: string; nombre_visible: string; activo: boolean };
 type Stats = { proyecto_id: number; total: number; pendientes: number; completados: number };
@@ -14,6 +14,8 @@ export default function ProyectosPage() {
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [stats, setStats] = useState<Record<number, Stats>>({});
   const [loading, setLoading] = useState(true);
+  const [showNew, setShowNew] = useState(false);
+  const [newForm, setNewForm] = useState({ nombre: '', nombre_visible: '' });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -41,12 +43,44 @@ export default function ProyectosPage() {
     setProyectos(prev => prev.map(x => x.id === p.id ? { ...x, activo: !x.activo } : x));
   };
 
+  const crearProyecto = async () => {
+    if (!newForm.nombre || !newForm.nombre_visible) return;
+    await fetch('/api/proyectos', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newForm),
+    });
+    setNewForm({ nombre: '', nombre_visible: '' });
+    setShowNew(false);
+    // Refrescar
+    const [pRes, sRes] = await Promise.all([fetch('/api/proyectos'), fetch('/api/proyectos/stats')]);
+    setProyectos(await pRes.json());
+    const sData = await sRes.json();
+    const map: Record<number, Stats> = {};
+    for (const s of sData) map[s.proyecto_id] = s;
+    setStats(map);
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
         <h1 className="text-xl font-bold text-[#1a1030]">Proyectos</h1>
         <p className="text-sm text-[#7c757c] mt-0.5">Gestión de campañas activas</p>
+        <button onClick={() => setShowNew(!showNew)}
+          className="btn-outline text-xs px-3 py-1.5 flex items-center gap-1">
+          <Plus size={12} /> Nuevo Proyecto
+        </button>
       </div>
+
+      {showNew && (
+        <div className="card-sm bg-[#f8f7fa] flex items-center gap-3">
+          <input placeholder="Slug (ej: seguros)" value={newForm.nombre} onChange={e => setNewForm({ ...newForm, nombre: e.target.value })}
+            className="border border-[#e0e0f0] rounded-lg px-3 py-1.5 text-xs bg-white" />
+          <input placeholder="Nombre visible (ej: Seguros Vida)" value={newForm.nombre_visible} onChange={e => setNewForm({ ...newForm, nombre_visible: e.target.value })}
+            className="border border-[#e0e0f0] rounded-lg px-3 py-1.5 text-xs bg-white flex-1" />
+          <button onClick={crearProyecto} className="btn-primary text-xs px-3 py-1.5">Crear</button>
+          <button onClick={() => setShowNew(false)} className="text-xs text-[#7c757c]">Cancelar</button>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 size={28} className="animate-spin text-[#0a6ea9]" /></div>

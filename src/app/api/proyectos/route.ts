@@ -21,3 +21,13 @@ export async function PATCH(req: Request) {
   await pool.query(`UPDATE proyectos SET ${updates.join(', ')} WHERE id = $${pi}`, params);
   return NextResponse.json({ success: true });
 }
+
+export async function POST(req: Request) {
+  const { nombre, nombre_visible, activo } = await req.json();
+  if (!nombre || !nombre_visible) return NextResponse.json({ error: 'Falta nombre' }, { status: 400 });
+  const { rows: [p] } = await pool.query(
+    `INSERT INTO proyectos (nombre, nombre_visible, activo) VALUES ($1, $2, $3) RETURNING *`,
+    [nombre, nombre_visible, activo !== false]
+  );
+  return NextResponse.json(p, { status: 201 });
+}

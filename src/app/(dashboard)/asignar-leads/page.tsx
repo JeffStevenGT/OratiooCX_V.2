@@ -1,17 +1,20 @@
 /**
- * app/(dashboard)/jefe/page.tsx — Asignar Leads
+ * app/(dashboard)/asignar-leads/page.tsx — Asignar Leads
  */
 
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Send, Loader2, CheckCircle2, Filter, UserPlus, Globe } from 'lucide-react';
+import { Users, Send, Loader2, CheckCircle2, Filter, UserPlus, Globe, RotateCcw } from 'lucide-react';
 
-type Lead = { id_cliente: string; dni: string; nombre: string; tipo_persona: string; cima: string; tiene_renove: boolean; renove_variante: string; lineas_count: number; ultima_extraccion: string };
-type Asesor = { id: number; nombre: string; email: string; equipo: string; rol: string };
+type Lead = { id_cliente: string; dni: string; nombre: string; cima: string; tiene_renove: boolean; renove_variante: string; lineas_count: number };
+type Liberado = { id_cliente: string; dni: string; nombre: string; asesor_anterior: string; liberado_at: string };
+type Asesor = { id: number; nombre: string; equipo: string };
 
 export default function AsignarLeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [liberados, setLiberados] = useState<Liberado[]>([]);
+  const [tab, setTab] = useState<'pendientes' | 'liberados'>('pendientes');
   const [asesores, setAsesores] = useState<Asesor[]>([]);
   const [equipo, setEquipo] = useState('');
   const [loading, setLoading] = useState(true);
@@ -23,14 +26,21 @@ export default function AsignarLeadsPage() {
   const [renoveFilter, setRenoveFilter] = useState('');
   const [fechaFilter, setFechaFilter] = useState('');
 
-  const fetchLeads = async () => {
-    const params = new URLSearchParams();
-    if (cimaFilter) params.set('cima', cimaFilter);
-    if (renoveFilter) params.set('renove', renoveFilter);
-    if (fechaFilter) params.set('fecha', fechaFilter);
-
-    const res = await fetch(`/api/pipeline?${params}`);
-    setLeads(await res.json());
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (cimaFilter) params.set('cima', cimaFilter);
+      if (renoveFilter) params.set('renove', renoveFilter);
+      if (fechaFilter) params.set('fecha', fechaFilter);
+      const [lRes, libRes] = await Promise.all([
+        fetch(`/api/pipeline?${params}`),
+        fetch('/api/pipeline/liberados'),
+      ]);
+      setLeads(await lRes.json());
+      setLiberados(await libRes.json());
+    } catch { /* */ }
+    setLoading(false);
   };
 
   const fetchAsesores = async (eq: string) => {
@@ -40,12 +50,13 @@ export default function AsignarLeadsPage() {
     setAsesores(await res.json());
   };
 
-  useEffect(() => { setLoading(true); fetchLeads().finally(() => setLoading(false)); }, [cimaFilter, renoveFilter, fechaFilter]);
+  useEffect(() => { fetchData(); }, [cimaFilter, renoveFilter, fechaFilter]);
   useEffect(() => { fetchAsesores(equipo); setAsesorId(''); }, [equipo]);
 
   const toggleAll = () => {
-    if (selected.size === leads.length) setSelected(new Set());
-    else setSelected(new Set(leads.map(l => l.id_cliente)));
+    const items = tab === 'pendientes' ? leads : liberados;
+    if (selected.size === items.length) setSelected(new Set());
+    else setSelected(new Set(items.map(l => l.id_cliente)));
   };
 
   const toggle = (id: string) => {
@@ -59,148 +70,125 @@ export default function AsignarLeadsPage() {
     setAsignando(true);
     try {
       const res = await fetch('/api/pipeline', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leads: [...selected], asesor_id: parseInt(asesorId) }),
       });
       if (res.ok) {
-        const asesorNombre = asesores.find(a => a.id === parseInt(asesorId))?.nombre || 'asesor';
-        setResultado(`${selected.size} leads asignados a ${asesorNombre}`);
+        setResultado(`${selected.size} leads asignados`);
         setSelected(new Set());
-        fetchLeads();
+        fetchData();
       }
-    } catch { setResultado('Error al asignar'); }
+    } catch { setResultado('Error'); }
     setAsignando(false);
     setTimeout(() => setResultado(''), 4000);
   };
 
-  // Agrupar asesores por equipo para mostrar en dropdown
   const equipos = [...new Set(asesores.map(a => a.equipo))].filter(Boolean);
+  const items = tab === 'pendientes' ? leads : liberados;
 
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-[#1a1030]">Asignar Leads</h1>
-          <p className="text-sm text-[#7c757c] mt-0.5">{leads.length} leads sin asignar</p>
+          <p className="text-sm text-[#7c757c] mt-0.5">
+            {tab === 'pendientes' ? `${leads.length} sin asignar` : `${liberados.length} liberados`}
+          </p>
         </div>
       </div>
 
-      {/* Filtros */}
-      <div className="card-sm flex items-center gap-3 flex-wrap">
-        <Filter size={14} className="text-[#7c757c]" />
-        <select value={cimaFilter} onChange={e => setCimaFilter(e.target.value)}
-          className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white">
-          <option value="">CIMA: Todos</option>
-          <option value="true">CIMA: SI</option>
-          <option value="false">CIMA: NO</option>
-        </select>
-        <select value={renoveFilter} onChange={e => setRenoveFilter(e.target.value)}
-          className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white">
-          <option value="">Renove: Todos</option>
-          <option value="true">Renove: SI</option>
-          <option value="false">Renove: NO</option>
-        </select>
-        <input type="date" value={fechaFilter} onChange={e => setFechaFilter(e.target.value)}
-          className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs" />
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-[#e8dce6]">
+        <button onClick={() => { setTab('pendientes'); setSelected(new Set()); }}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === 'pendientes' ? 'border-[#0a6ea9] text-[#0a6ea9]' : 'border-transparent text-[#7c757c]'}`}>
+          Sin asignar ({leads.length})
+        </button>
+        <button onClick={() => { setTab('liberados'); setSelected(new Set()); }}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === 'liberados' ? 'border-[#0a6ea9] text-[#0a6ea9]' : 'border-transparent text-[#7c757c]'}`}>
+          Liberados ({liberados.length})
+        </button>
       </div>
 
-      {/* Asignación */}
-      {selected.size > 0 && (
-        <div className="card-sm bg-[#f0f4ff] border-[#c4d4f0] flex items-center gap-3 flex-wrap">
-          <UserPlus size={16} className="text-[#0a6ea9]" />
-          <span className="text-sm font-medium text-[#1a1030]">{selected.size} seleccionados</span>
-
-          {/* Equipo */}
-          <div className="flex items-center gap-1.5">
-            <Globe size={12} className="text-[#7c757c]" />
-            <select value={equipo} onChange={e => setEquipo(e.target.value)}
-              className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white">
-              <option value="">Todos los equipos</option>
-              {equipos.map(eq => <option key={eq} value={eq}>{eq}</option>)}
-            </select>
-          </div>
-
-          {/* Asesor */}
-          <select value={asesorId} onChange={e => setAsesorId(e.target.value)}
-            className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white min-w-[180px]">
-            <option value="">Elegir asesor...</option>
-            {asesores.filter(a => a.rol === 'asesor').map(a => (
-              <option key={a.id} value={a.id}>{a.nombre} ({a.equipo})</option>
-            ))}
+      {tab === 'pendientes' && (
+        <div className="card-sm flex items-center gap-3 flex-wrap">
+          <Filter size={14} className="text-[#7c757c]" />
+          <select value={cimaFilter} onChange={e => setCimaFilter(e.target.value)} className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white">
+            <option value="">CIMA: Todos</option><option value="true">CIMA: SI</option><option value="false">CIMA: NO</option>
           </select>
-
-          <button onClick={asignar} disabled={!asesorId || asignando}
-            className="btn-primary flex items-center gap-1.5 text-xs px-4 py-1.5 disabled:opacity-40">
-            {asignando ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-            Asignar
-          </button>
-          {resultado && (
-            <span className="text-xs text-emerald-600 flex items-center gap-1">
-              <CheckCircle2 size={12} /> {resultado}
-            </span>
-          )}
+          <select value={renoveFilter} onChange={e => setRenoveFilter(e.target.value)} className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white">
+            <option value="">Renove: Todos</option><option value="true">Renove: SI</option><option value="false">Renove: NO</option>
+          </select>
+          <input type="date" value={fechaFilter} onChange={e => setFechaFilter(e.target.value)} className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs" />
         </div>
       )}
 
-      {/* Tabla */}
+      {selected.size > 0 && (
+        <div className="card-sm bg-[#f0f4ff] border-[#c4d4f0] flex items-center gap-3 flex-wrap">
+          <UserPlus size={16} className="text-[#0a6ea9]" />
+          <span className="text-sm font-medium">{selected.size} seleccionados</span>
+          <Globe size={12} className="text-[#7c757c]" />
+          <select value={equipo} onChange={e => setEquipo(e.target.value)} className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white">
+            <option value="">Todos</option>
+            {equipos.map(eq => <option key={eq} value={eq}>{eq}</option>)}
+          </select>
+          <select value={asesorId} onChange={e => setAsesorId(e.target.value)} className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white min-w-[180px]">
+            <option value="">Elegir asesor...</option>
+            {asesores.map(a => <option key={a.id} value={a.id}>{a.nombre} ({a.equipo})</option>)}
+          </select>
+          <button onClick={asignar} disabled={!asesorId || asignando} className="btn-primary flex items-center gap-1.5 text-xs px-4 py-1.5 disabled:opacity-40">
+            {asignando ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Asignar
+          </button>
+          {resultado && <span className="text-xs text-emerald-600 flex items-center gap-1"><CheckCircle2 size={12} /> {resultado}</span>}
+        </div>
+      )}
+
       <div className="card !p-0 overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center py-16"><Loader2 size={28} className="animate-spin text-[#b8b0b8]" /></div>
-        ) : leads.length === 0 ? (
+          <div className="flex justify-center py-16"><Loader2 size={28} className="animate-spin text-[#b8b0b8]" /></div>
+        ) : items.length === 0 ? (
           <div className="text-center py-16">
             <Users size={48} className="text-[#b8b0b8] mx-auto mb-3" />
-            <p className="text-sm text-[#7c757c]">No hay leads sin asignar</p>
-            <p className="text-xs text-[#b8b0b8] mt-1">El bot aún no procesó DNIs o ya fueron todos asignados</p>
+            <p className="text-sm text-[#7c757c]">{tab === 'pendientes' ? 'No hay leads sin asignar' : 'No hay leads liberados'}</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-[#e8dce6] bg-[#f8f7fa]">
-                  <th className="px-3 py-2.5 w-10">
-                    <input type="checkbox" checked={selected.size === leads.length && leads.length > 0} onChange={toggleAll}
-                      className="rounded border-[#d0d0e0] w-3.5 h-3.5" />
-                  </th>
-                  <th className="table-header px-3 py-2.5 text-left">DNI</th>
-                  <th className="table-header px-3 py-2.5 text-left">Nombre</th>
-                  <th className="table-header px-3 py-2.5 text-center">CIMA</th>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-[#e8dce6] bg-[#f8f7fa]">
+                <th className="px-3 py-2.5 w-10"><input type="checkbox" checked={selected.size === items.length && items.length > 0} onChange={toggleAll} className="rounded w-3.5 h-3.5" /></th>
+                <th className="table-header px-3 py-2.5 text-left">DNI</th>
+                <th className="table-header px-3 py-2.5 text-left">Nombre</th>
+                {tab === 'pendientes' ? (
+                  <><th className="table-header px-3 py-2.5 text-center">CIMA</th>
                   <th className="table-header px-3 py-2.5 text-center">Renove</th>
-                  <th className="table-header px-3 py-2.5 text-center">Líneas</th>
-                  <th className="table-header px-3 py-2.5 text-left">Variante</th>
+                  <th className="table-header px-3 py-2.5 text-center">Líneas</th></>
+                ) : (
+                  <th className="table-header px-3 py-2.5 text-left">Asesor anterior</th>
+                )}
+                <th className="table-header px-3 py-2.5 text-left">{tab === 'pendientes' ? 'Variante' : 'Liberado'}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((l: any) => (
+                <tr key={l.id_cliente} onClick={() => toggle(l.id_cliente)}
+                  className={`border-b border-[#f0f0f8] cursor-pointer ${selected.has(l.id_cliente) ? 'bg-[#f0f4ff]' : 'hover:bg-[#f8f7fa]'}`}>
+                  <td className="px-3 py-2.5"><input type="checkbox" checked={selected.has(l.id_cliente)} readOnly className="rounded w-3.5 h-3.5" /></td>
+                  <td className="py-2.5 px-3 text-xs font-mono font-medium">{l.dni}</td>
+                  <td className="py-2.5 px-3 text-xs max-w-[200px] truncate">{l.nombre || '—'}</td>
+                  {tab === 'pendientes' ? (
+                    <><td className="py-2.5 px-3 text-center"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${l.cima === 'true' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{l.cima === 'true' ? 'SI' : 'NO'}</span></td>
+                    <td className="py-2.5 px-3 text-center"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${l.tiene_renove ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>{l.tiene_renove ? 'SI' : 'NO'}</span></td>
+                    <td className="py-2.5 px-3 text-center text-xs">{l.lineas_count}</td></>
+                  ) : (
+                    <td className="py-2.5 px-3 text-xs">{l.asesor_anterior}</td>
+                  )}
+                  <td className="py-2.5 px-3 text-xs max-w-[180px] truncate">
+                    {tab === 'pendientes' ? (l.renove_variante === 'N/A' ? '—' : l.renove_variante) :
+                      (l.liberado_at ? new Date(l.liberado_at).toLocaleDateString('es-PE') : '—')}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {leads.map(l => (
-                  <tr key={l.id_cliente} onClick={() => toggle(l.id_cliente)}
-                    className={`border-b border-[#f0f0f8] cursor-pointer transition-colors ${
-                      selected.has(l.id_cliente) ? 'bg-[#f0f4ff]' : 'hover:bg-[#f8f7fa]'
-                    }`}>
-                    <td className="px-3 py-2.5">
-                      <input type="checkbox" checked={selected.has(l.id_cliente)} readOnly
-                        className="rounded border-[#d0d0e0] w-3.5 h-3.5" />
-                    </td>
-                    <td className="py-2.5 px-3 text-xs font-mono font-medium">{l.dni}</td>
-                    <td className="py-2.5 px-3 text-xs max-w-[200px] truncate" title={l.nombre}>{l.nombre || '—'}</td>
-                    <td className="py-2.5 px-3 text-center">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                        l.cima === 'true' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
-                      }`}>{l.cima === 'true' ? 'SI' : 'NO'}</span>
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                        l.tiene_renove ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
-                      }`}>{l.tiene_renove ? 'SI' : 'NO'}</span>
-                    </td>
-                    <td className="py-2.5 px-3 text-center text-xs">{l.lineas_count}</td>
-                    <td className="py-2.5 px-3 text-xs max-w-[180px] truncate" title={l.renove_variante}>
-                      {l.renove_variante === 'N/A' ? '—' : l.renove_variante}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
     </div>
