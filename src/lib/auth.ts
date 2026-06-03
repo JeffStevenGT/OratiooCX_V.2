@@ -7,8 +7,6 @@
 
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
-import bcrypt from 'bcryptjs';
-import pool from './db';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
@@ -20,6 +18,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
+
+        // Dynamic import: evita que el middleware (Edge) cargue pg
+        const { default: pool } = await import('./db');
+        const bcrypt = (await import('bcryptjs')).default;
 
         const { rows } = await pool.query(
           `SELECT id, email, nombre, password_hash, rol, equipo, activo

@@ -20,35 +20,11 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
 
-    const result = await signIn('credentials', {
+    await signIn('credentials', {
       email: form.email,
       password: form.password,
-      redirect: false,
+      callbackUrl: '/admin',
     });
-
-    if (result?.error) {
-      setError('Credenciales inválidas');
-      setLoading(false);
-      return;
-    }
-
-    if (result?.ok) {
-      // Obtener la sesión para saber el rol y redirigir
-      const res = await fetch('/api/auth/session');
-      const session = await res.json();
-      const role = session?.user?.role;
-
-      const redirectMap: Record<string, string> = {
-        asesor: '/asesor',
-        supervisor: '/supervisor',
-        jefe_area: '/jefe',
-        back_office: '/backoffice',
-        it: '/admin',
-        desarrollador: '/admin',
-      };
-
-      router.push(redirectMap[role] || '/admin');
-    }
   }
 
   return (
