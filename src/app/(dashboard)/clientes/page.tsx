@@ -7,7 +7,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Search, Loader2, RefreshCw, ArrowUpDown, ChevronDown, ChevronUp,
-  Download, Users, Building, User,
+  Download, Users, Building, User, Smartphone, PhoneOff, Gift,
+  Clock, TrendingUp, AlertTriangle, Star, StarOff, Tv,
+  UserPlus, UserMinus, Package,
 } from 'lucide-react';
 
 type Cliente = {
@@ -393,14 +395,17 @@ export default function ClientesPage() {
 
                             {/* Si es no_cliente */}
                             {c.estado === 'no_cliente' && (
-                              <p className="text-xs text-red-500">❌ No es cliente de Orange</p>
+                              <p className="text-xs text-red-500 flex items-center gap-1">
+                                <AlertTriangle size={12} /> No es cliente de Orange
+                              </p>
                             )}
 
                             {/* Cambios detectados */}
                             {deteccionesCache[c.id_cliente] && deteccionesCache[c.id_cliente].length > 0 && (
                               <div>
                                 <h4 className="text-xs font-semibold text-[#1a1030] mb-2 flex items-center gap-1">
-                                  🔍 Cambios detectados ({deteccionesCache[c.id_cliente].length})
+                                  <TrendingUp size={12} className="text-[#0a6ea9]" />
+                                  Cambios detectados ({deteccionesCache[c.id_cliente].length})
                                 </h4>
                                 <div className="flex flex-wrap gap-1">
                                   {deteccionesCache[c.id_cliente].map((d: any, i: number) => (
@@ -446,27 +451,29 @@ export default function ClientesPage() {
 }
 
 function CambioBadge({ deteccion }: { deteccion: any }) {
-  const labels: Record<string, { text: string; color: string }> = {
-    linea_nueva: { text: '📱 Nueva línea', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-    linea_eliminada: { text: '📴 Línea dada de baja', color: 'bg-red-100 text-red-700 border-red-200' },
-    renove_nuevo: { text: '🎁 Nuevo Renove', color: 'bg-blue-100 text-blue-700 border-blue-200' },
-    renove_cambio: { text: '🔄 Cambió Renove', color: 'bg-blue-100 text-blue-700 border-blue-200' },
-    permanencia_vencida: { text: '⏰ Permanencia venció', color: 'bg-amber-100 text-amber-700 border-amber-200' },
-    permanencia_cambio: { text: '📅 Cambió permanencia', color: 'bg-amber-100 text-amber-700 border-amber-200' },
-    consumo_cambio: { text: '📊 Cambió consumo', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
-    estado_cambio: { text: '⚠️ Cambió estado', color: 'bg-orange-100 text-orange-700 border-orange-200' },
-    cima_nuevo: { text: '⭐ Nuevo CIMA', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-    cima_perdido: { text: '💔 Perdió CIMA', color: 'bg-red-100 text-red-700 border-red-200' },
-    tv_nuevo: { text: '📺 Nuevo TV', color: 'bg-purple-100 text-purple-700 border-purple-200' },
-    tv_perdido: { text: '📺 Perdió TV', color: 'bg-gray-100 text-gray-600 border-gray-200' },
-    cliente_recuperado: { text: '🔙 Cliente volvió', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-    cliente_perdido: { text: '🚫 Cliente se fue', color: 'bg-red-100 text-red-700 border-red-200' },
-    paquete_cambio: { text: '📦 Cambió paquete', color: 'bg-slate-100 text-slate-700 border-slate-200' },
+  const labels: Record<string, { text: string; color: string; icon: any }> = {
+    linea_nueva: { text: 'Nueva línea', color: 'border-emerald-200 bg-emerald-50 text-emerald-700', icon: Smartphone },
+    linea_eliminada: { text: 'Línea dada de baja', color: 'border-red-200 bg-red-50 text-red-700', icon: PhoneOff },
+    renove_nuevo: { text: 'Nuevo Renove', color: 'border-blue-200 bg-blue-50 text-blue-700', icon: Gift },
+    renove_cambio: { text: 'Cambió Renove', color: 'border-blue-200 bg-blue-50 text-blue-700', icon: Gift },
+    permanencia_vencida: { text: 'Permanencia venció', color: 'border-amber-200 bg-amber-50 text-amber-700', icon: Clock },
+    permanencia_cambio: { text: 'Cambió permanencia', color: 'border-amber-200 bg-amber-50 text-amber-700', icon: Clock },
+    consumo_cambio: { text: 'Cambió consumo', color: 'border-indigo-200 bg-indigo-50 text-indigo-700', icon: TrendingUp },
+    estado_cambio: { text: 'Cambió estado', color: 'border-orange-200 bg-orange-50 text-orange-700', icon: AlertTriangle },
+    cima_nuevo: { text: 'Nuevo CIMA', color: 'border-emerald-200 bg-emerald-50 text-emerald-700', icon: Star },
+    cima_perdido: { text: 'Perdió CIMA', color: 'border-red-200 bg-red-50 text-red-700', icon: StarOff },
+    tv_nuevo: { text: 'Nuevo TV', color: 'border-purple-200 bg-purple-50 text-purple-700', icon: Tv },
+    tv_perdido: { text: 'Perdió TV', color: 'border-gray-200 bg-gray-50 text-gray-600', icon: Tv },
+    cliente_recuperado: { text: 'Cliente volvió', color: 'border-emerald-200 bg-emerald-50 text-emerald-700', icon: UserPlus },
+    cliente_perdido: { text: 'Cliente se fue', color: 'border-red-200 bg-red-50 text-red-700', icon: UserMinus },
+    paquete_cambio: { text: 'Cambió paquete', color: 'border-slate-200 bg-slate-50 text-slate-700', icon: Package },
   };
-  const info = labels[deteccion.tipo] || { text: deteccion.tipo, color: 'bg-gray-100 text-gray-600 border-gray-200' };
+  const info = labels[deteccion.tipo] || { text: deteccion.tipo, color: 'border-gray-200 bg-gray-50 text-gray-600', icon: AlertTriangle };
+  const Icon = info.icon;
   return (
     <div className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[9px] font-medium border ${info.color}`}
          title={deteccion.linea_numero ? `Línea ${deteccion.linea_numero}: ${deteccion.valor_anterior || ''} → ${deteccion.valor_nuevo || ''}` : (deteccion.valor_nuevo || '')}>
+      <Icon size={10} />
       {info.text}
       {deteccion.linea_numero && <span className="font-mono opacity-70">{deteccion.linea_numero.slice(-4)}</span>}
     </div>
