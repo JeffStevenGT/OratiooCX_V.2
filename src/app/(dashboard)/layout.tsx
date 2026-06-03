@@ -1,12 +1,9 @@
 import { auth } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import Sidebar from '@/components/shared/Sidebar';
+import { ProjectProvider } from '@/lib/project-context';
 
-export default async function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
   if (!session?.user) redirect('/login');
 
@@ -18,13 +15,15 @@ export default async function DashboardLayout({
   };
 
   return (
-    <div className="flex min-h-screen bg-[#f5f5fa]">
-      <Sidebar userName={user.name} userRole={user.userRole} userId={user.id} />
-      <main className="flex-1 p-8 overflow-auto">
-        <div className="max-w-7xl mx-auto">
-          {children}
-        </div>
-      </main>
-    </div>
+    <ProjectProvider>
+      <div className="flex min-h-screen bg-[#f5f5fa]">
+        <Sidebar userName={user.name} userRole={user.userRole} userId={user.id} />
+        <main className="flex-1 p-8 overflow-auto">
+          <div className="max-w-7xl mx-auto">
+            {children}
+          </div>
+        </main>
+      </div>
+    </ProjectProvider>
   );
 }
