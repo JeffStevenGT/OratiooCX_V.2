@@ -4,14 +4,19 @@
 
 'use client';
 
-import { useState, useCallback } from 'react';
-import { Upload, FileText, Loader2, CheckCircle2, AlertTriangle, Table2 } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { Upload, FileText, Loader2, CheckCircle2, AlertTriangle, Table2, Clock, List, RefreshCw } from 'lucide-react';
+
+type ColaDni = { id_cliente: string; estado: string; ultima_extraccion: string | null; updated_at: string | null };
+type ColaResumen = Record<string, number>;
 
 export default function DocumentosPage() {
   const [file, setFile] = useState<File | null>(null);
   const [dnis, setDnis] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<{ status: string; text: string } | null>(null);
+  const [cola, setCola] = useState<{ resumen: ColaResumen; dnis: ColaDni[] } | null>(null);
+  const [loadingCola, setLoadingCola] = useState(false);
 
   const isExcel = (name: string) => name.endsWith('.xlsx') || name.endsWith('.xls');
 
@@ -65,6 +70,17 @@ export default function DocumentosPage() {
     }
   }, []);
 
+  const fetchCola = useCallback(async () => {
+    setLoadingCola(true);
+    try {
+      const res = await fetch('/api/documentos/cola');
+      if (res.ok) setCola(await res.json());
+    } catch { /* ignore */ }
+    setLoadingCola(false);
+  }, []);
+
+  useEffect(() => { fetchCola(); }, [fetchCola]);
+
   const handleUpload = async () => {
     if (!file || dnis.length === 0) return;
     setUploading(true);
@@ -83,6 +99,7 @@ export default function DocumentosPage() {
       setResult({ status: 'ok', text: `${data.count || dnis.length} DNIs cargados correctamente.` });
       setFile(null);
       setDnis([]);
+      fetchCola(); // refrescar cola
     } catch (err: any) {
       setResult({ status: 'error', text: err.message || 'Error al cargar los DNIs.' });
     } finally {
@@ -212,18 +229,92 @@ export default function DocumentosPage() {
         </div>
       )}
 
-      {/* Info adicional */}
-      {!file && (
-        <div className="card bg-[#f8f7fa] border-[#e8dce6]">
-          <h3 className="text-sm font-semibold text-[#1a1030] mb-2">¿Cómo funciona?</h3>
-          <ol className="text-xs text-[#7c757c] space-y-1 list-decimal list-inside">
-            <li>Sube un archivo con DNIs (una columna en Excel, o uno por línea en TXT/CSV)</li>
-            <li>El sistema detecta automáticamente los DNIs válidos</li>
-            <li>Al hacer clic en <strong>Cargar DNIs</strong>, se registran como pendientes</li>
-            <li>El bot los procesa automáticamente cuando está activo</li>
-          </ol>
+      {/* Cola de DNIs */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <List size={16} className="text-[#0a6ea9]" />
+            Cola de DNIs — Proyecto Orange
+          </h3>
+          <button onClick={fetchCola} disabled={loadingCola}
+            className="text-xs text-[#7c757c] hover:text-[#0a6ea9] flex items-center gap-1">
+            <RefreshCw size={12} className={loadingCola ? 'animate-spin' : ''} />
+            Actualizar
+          </button>
         </div>
-      )}
+
+        {cola ? (
+          <>
+            {/* Stats */}
+            <div className="grid grid-cols-4 gap-3 mb-4">
+              <StatBadge label="Pendientes" count={cola.resumen.pendiente || 0} color="bg-amber-100 text-amber-700" />
+              <StatBadge label="En progreso" count={cola.resumen.en_progreso || 0} color="bg-blue-100 text-blue-700" />
+              <StatBadge label="Completados" count={cola.resumen.completado || 0} color="bg-emerald-100 text-emerald-700" />
+              <StatBadge label="No cliente" count={cola.resumen.no_cliente || 0} color="bg-gray-100 text-gray-600" />
+            </div>
+
+            {/* Tabla */}
+            {cola.dnis.length > 0 ? (
+              <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="border-b border-[#e8dce6]">
+                      <th className="table-header px-3 py-2 text-left">DNI</th>
+                      <th className="table-header px-3 py-2 text-left">Estado</th>
+                      <th className="table-header px-3 py-2 text-left">Última actualización</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cola.dnis.map((d) => (
+                      <tr key={d.id_cliente} className="border-b border-[#f0f0f8] hover:bg-[#f8f7fa]">
+                        <td className="py-2 px-3 font-mono">{d.id_cliente}</td>
+                        <td className="py-2 px-3">
+                          <EstadoBadge estado={d.estado || 'pendiente'} />
+                        </td>
+                        <td className="py-2 px-3 text-[#7c757c]">
+                          {d.updated_at ? new Date(d.updated_at).toLocaleString('es-PE') : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-xs text-[#7c757c] text-center py-6">
+                No hay DNIs cargados. Sube un archivo para empezar.
+              </p>
+            )}
+          </>
+        ) : (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 size={20} className="animate-spin text-[#b8b0b8]" />
+          </div>
+        )}
+      </div>
     </div>
+  );
+}
+
+function StatBadge({ label, count, color }: { label: string; count: number; color: string }) {
+  return (
+    <div className={`rounded-lg px-3 py-2 text-center ${color}`}>
+      <p className="text-lg font-bold">{count}</p>
+      <p className="text-[10px] font-medium">{label}</p>
+    </div>
+  );
+}
+
+function EstadoBadge({ estado }: { estado: string }) {
+  const map: Record<string, string> = {
+    pendiente: 'bg-amber-100 text-amber-700',
+    en_progreso: 'bg-blue-100 text-blue-700',
+    completado: 'bg-emerald-100 text-emerald-700',
+    no_cliente: 'bg-gray-100 text-gray-600',
+    error: 'bg-red-100 text-red-700',
+  };
+  return (
+    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${map[estado] || 'bg-gray-100 text-gray-600'}`}>
+      {estado.replace('_', ' ')}
+    </span>
   );
 }
