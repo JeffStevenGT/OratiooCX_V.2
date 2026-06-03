@@ -1,702 +1,477 @@
-# 🏗️ Oratioo CX — Arquitectura del Sistema
+# 🏗️ Oratioo CX — Arquitectura del Sistema (v3.0)
 
-> Stack: Next.js + PostgreSQL (local) → Vercel + Render (producción)
-> Versión: 2.0 — Con análisis de concurrencia y escenarios de fallo
+> Stack: Next.js 15 + PostgreSQL + Python/Playwright (bots)
+> Deploy objetivo: VPS Dedicado (Hetzner CPX31/CPX41) con Coolify
+> Versión: 3.0 — Mayo 2026, actualizado con estado real del proyecto
 
 ---
 
-## 🌐 Frontend
+## 🌐 Frontend — Next.js 15 (App Router)
 
-### Framework
-
-| Componente | Tecnologia |
+| Componente | Tecnología |
 |---|---|
 | Framework | Next.js 15 (App Router) |
-| Lenguaje | TypeScript (tipado estricto) |
-| Estilos | Tailwind CSS 4 |
-| UI Components | shadcn/ui (headless, personalizables) |
+| Lenguaje | TypeScript |
+| Estilos | Tailwind CSS 3.4 |
 | Iconos | Lucide React |
-| Graficos | Recharts |
-| Estado global | React Context + Zustand |
-| Formularios | React Hook Form + Zod |
 | HTTP Client | fetch nativo |
-| Tablas | TanStack Table |
+| DB Driver | pg (Pool de conexiones) |
 
-### Design System
+### Páginas Implementadas
 
-- Paleta: Morado (#481163) + Azul (#0a6ea9) + Gris neutro
-- Tipografia: Inter (system font)
-- Responsive: mobile-first con Tailwind
-
-### Paginas por Rol
-
-| Ruta | Pagina | Roles |
+| Ruta | Página | Estado |
 |---|---|---|
-| /asesor | Dashboard Asesor | asesor |
-| /supervisor | Dashboard Supervisor | supervisor |
-| /jefe | Dashboard Jefe | jefe_area |
-| /backoffice | Dashboard Backoffice | back_office |
-| /admin | Dashboard Admin | it, admin |
-| /clientes | Ficha 360 del cliente | supervisor, jefe, admin |
-| /power-dialer | Discador VPBX | asesor, supervisor |
-| /agenda | Callbacks | asesor, supervisor |
-| /wikiratioo | Formacion | todos |
-| /tramitacion | Pipeline ventas | back_office |
-| /proyectos | Admin de campanas | jefe, admin |
-| /usuarios | Gestion usuarios | jefe, admin |
-| /infraestructura | Maquinas, proxies | admin |
-| /bots | Control de bots | admin |
-| /documentos | Subida de DNIs | admin, supervisor |
-
-
-## Estructura del Proyecto
-
-```
-Oratioo_CX/
-│
-├── bots/                          ← Bots en Python (locales)
-│   ├── orange/                    ← Bot Pangea Orange
-│   │   ├── coordinator.py         ← Orquestador multi-worker
-│   │   ├── worker.py              ← Worker individual
-│   │   ├── login.py               ← Login + extracción Orange
-│   │   ├── browser_setup.py       ← Config navegador + proxy
-│   │   ├── supabase_client.py     ← Adaptador PostgreSQL (service role)
-│   │   ├── agente.py              ← Agente remoto (comandos)
-│   │   └── asesor_agent.py        ← Agente para asesores
-│   ├── mainjobs/                  ← Futuro bot Mainjobs
-│   └── shared/                    ← Código compartido entre bots
-│
-├── src/                           ← Next.js (App Router)
-│   ├── app/
-│   │   ├── (auth)/                ← Login, registro
-│   │   ├── (dashboard)/           ← Páginas protegidas por rol
-│   │   │   ├── asesor/
-│   │   │   ├── supervisor/
-│   │   │   ├── jefe/
-│   │   │   ├── backoffice/
-│   │   │   └── admin/
-│   │   ├── api/                   ← API Routes
-│   │   │   ├── auth/              ← Login, logout, session
-│   │   │   ├── clientes/          ← CRUD clientes
-│   │   │   ├── proyectos/         ← CRUD proyectos
-│   │   │   ├── pipeline/          ← Estados comerciales
-│   │   │   ├── historial/         ← Timeline
-│   │   │   ├── documentos/        ← Subida de DNIs
-│   │   │   ├── webhooks/          ← VPBX callbacks
-│   │   │   └── vpbx/              ← Click2Call, CDR
-│   │   └── layout.tsx
-│   ├── components/
-│   │   ├── Sidebar.tsx
-│   │   ├── ProtectedRoute.tsx
-│   │   ├── TimelineCliente.tsx
-│   │   ├── FichaCliente.tsx
-│   │   ├── CallButton.tsx
-│   │   └── ...
-│   ├── lib/
-│   │   ├── db.ts                  ← Pool de conexiones PostgreSQL
-│   │   ├── auth.ts                ← NextAuth.js
-│   │   ├── vpbx.ts                ← Cliente VPBX
-│   │   └── storage.ts             ← Archivos locales / R2
-│   └── middleware.ts              ← Protección de rutas
-│
-├── supabase/                      ← Migraciones SQL
-│   ├── 001_clientes.sql
-│   ├── 002_proyectos.sql
-│   └── ...
-│
-├── docs/
-│   └── Arquitectura Completa.md
-│
-├── .env.local
-├── next.config.js
-├── package.json
-└── tsconfig.json
-```
+| /login | Login con NextAuth | ✅ Funcional |
+| /clientes | Tabla con datos del bot, filtros, desplegable, export CSV | ✅ Completo |
+| /admin/documentos | Subida de .csv/.txt/.xlsx, cola de DNIs con stats | ✅ Completo |
+| /bots | Control remoto con selector de máquina y workers | ✅ Completo |
+| /infraestructura | Gestión de proxies + máquinas (CRUD) | ✅ Completo |
+| /asesor, /supervisor, /jefe, /backoffice, /admin | Dashboards por rol | 🟡 Placeholders |
+| /agenda | Callbacks | 🟡 Placeholder |
+| /proyectos | Admin de campañas | 🟡 Placeholder |
+| /power-dialer | Discador VPBX | 🟡 Placeholder |
+| /usuarios | Gestión usuarios | 🟡 Placeholder |
 
 ---
 
-## Base de Datos — PostgreSQL
+## 🗄️ Base de Datos — PostgreSQL
 
-### Tabla: `clientes` — Core del sistema
+- Host: `localhost:5433` (dev), futuro VPS
+- Pool: 20 conexiones máx, idle timeout 30s, statement timeout 30s
+- Driver: `pg` (sin ORM)
+
+### Tablas Implementadas
+
+| Tabla | Descripción | Migración |
+|---|---|---|
+| `clientes` | Core: id_cliente (DNI_XXXXXXXX), tipo_doc, nombre, tipo_persona | ✅ 001 |
+| `proyectos` | Catálogo: orange, mainjobs, impresoras | ✅ 001 |
+| `clientes_proyectos` | Datos del bot por proyecto (JSONB `datos`) | ✅ 001 |
+| `historial` | Timeline único + triggers de auditoría | ✅ 001 |
+| `pipeline` | Estado comercial + soft delete | ✅ 001 |
+| `usuarios` | Login + roles + extensión VPBX | ✅ 001 |
+| `cdr_vpbx` | Registro de llamadas | ✅ 001 |
+| `comandos_bot` | Control remoto multi-máquina (maquina_destino) | ✅ 001 |
+| `maquinas` | Catálogo de VPS + heartbeat | ✅ 002 |
+
+### Índices JSONB en `clientes_proyectos.datos`
 
 ```sql
-CREATE TABLE clientes (
-    id_cliente TEXT PRIMARY KEY,        -- "DNI_12345678A" | "NIE_X1234567L" | "NIF_B12345678"
-    tipo_documento TEXT NOT NULL,       -- DNI | NIE | NIF
-    numero_documento TEXT NOT NULL,
-    nombre_razon_social TEXT,
-    tipo_persona TEXT,                  -- natural | autonomo | empresa
-    cnae TEXT,                          -- Código actividad económica
-    telefonos JSONB DEFAULT '[]',
-    emails JSONB DEFAULT '[]',
-    direccion JSONB DEFAULT '{}',
-    datos_extra JSONB DEFAULT '{}',
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE INDEX idx_clientes_tipo_doc ON clientes (tipo_documento, numero_documento);
-CREATE INDEX idx_clientes_nombre ON clientes USING GIN (to_tsvector('spanish', nombre_razon_social));
-CREATE INDEX idx_clientes_telefonos ON clientes USING GIN (telefonos);
+-- B-Tree sobre campos críticos para evitar escaneos secuenciales
+idx_cp_cima_global  ON ((datos->>'cima_global'))
+idx_cp_lineas_gin   ON ((datos->'lineas'))        -- GIN
+idx_cp_estado       ON ((datos->'estado'))
+idx_cp_ultima_extraccion ON (ultima_extraccion DESC)
 ```
 
-### Tabla: `proyectos` — Campañas / Proyectos
+### Triggers de Auditoría (Zero-Trust)
+
+- `trigger_auditoria_pipeline`: Cualquier UPDATE de estado → INSERT en historial
+- `trigger_auditoria_extraccion`: Cualquier INSERT en clientes_proyectos → INSERT en historial
+
+### Campos RGPD (pendientes)
 
 ```sql
-CREATE TABLE proyectos (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    nombre TEXT NOT NULL UNIQUE,         -- "orange" | "mainjobs"
-    nombre_visible TEXT NOT NULL,
-    activo BOOLEAN DEFAULT true,
-    config JSONB DEFAULT '{}',
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-```
-
-### Tabla: `clientes_proyectos` — Datos del cliente POR proyecto
-
-```sql
-CREATE TABLE clientes_proyectos (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    id_cliente TEXT NOT NULL REFERENCES clientes(id_cliente) ON DELETE CASCADE,
-    proyecto_id BIGINT NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
-    datos JSONB DEFAULT '{}',
-    ultima_extraccion TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now(),
-    UNIQUE(id_cliente, proyecto_id)
-);
-
-CREATE INDEX idx_cp_cliente ON clientes_proyectos (id_cliente);
-CREATE INDEX idx_cp_proyecto ON clientes_proyectos (proyecto_id);
-CREATE INDEX idx_cp_datos ON clientes_proyectos USING GIN (datos);
-```
-
-### Tabla: `historial` — Timeline único
-
-```sql
-CREATE TABLE historial (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    id_cliente TEXT NOT NULL REFERENCES clientes(id_cliente) ON DELETE CASCADE,
-    tipo TEXT NOT NULL,                  -- "llamada" | "extraccion" | "tipificacion" | "curso" | "compra"
-    proyecto_id BIGINT REFERENCES proyectos(id),
-    asesor_id BIGINT,
-    descripcion TEXT,
-    datos JSONB DEFAULT '{}',
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE INDEX idx_historial_cliente ON historial (id_cliente);
-CREATE INDEX idx_historial_fecha ON historial (created_at DESC);
-CREATE INDEX idx_historial_tipo ON historial (tipo);
-```
-
-### Tabla: `pipeline` — Estado comercial
-
-```sql
-CREATE TABLE pipeline (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    id_cliente TEXT NOT NULL REFERENCES clientes(id_cliente) ON DELETE CASCADE,
-    proyecto_id BIGINT NOT NULL REFERENCES proyectos(id) ON DELETE CASCADE,
-    asesor_id BIGINT NOT NULL,
-    estado TEXT NOT NULL DEFAULT 'pendiente',
-        CHECK (estado IN ('pendiente','contactado','interesado','negociacion',
-                          'venta','tramitado','activado','no_interesa','no_contesta')),
-    notas TEXT,
-    documentos JSONB DEFAULT '[]',
-    callback_at TIMESTAMPTZ,
-    ultimo_cambio TIMESTAMPTZ DEFAULT now(),
-    created_at TIMESTAMPTZ DEFAULT now(),
-    UNIQUE(id_cliente, proyecto_id, asesor_id)
-);
-
-CREATE INDEX idx_pipeline_asesor ON pipeline (asesor_id);
-CREATE INDEX idx_pipeline_estado ON pipeline (estado);
-CREATE INDEX idx_pipeline_callback ON pipeline (callback_at) WHERE callback_at IS NOT NULL;
-```
-
-### Tabla: `usuarios` — Con NextAuth.js
-
-```sql
-CREATE TABLE usuarios (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    email TEXT UNIQUE NOT NULL,
-    nombre TEXT NOT NULL,
-    password_hash TEXT NOT NULL,
-    rol TEXT NOT NULL DEFAULT 'asesor',
-        CHECK (rol IN ('asesor','supervisor','jefe_area','back_office','it','desarrollador')),
-    equipo TEXT,                         -- "España" | "Perú"
-    supervisor_id BIGINT REFERENCES usuarios(id),
-    activo BOOLEAN DEFAULT true,
-    ultima_conexion TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-```
-
-### Tabla: `comandos_bot` — Para control remoto de workers
-
-```sql
-CREATE TABLE comandos_bot (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    maquina_destino TEXT NOT NULL,
-    comando TEXT NOT NULL,               -- "iniciar" | "detener" | "pausar" | "reanudar" | "reset_queue"
-    parametros JSONB DEFAULT '{}',
-    estado TEXT DEFAULT 'pendiente',
-        CHECK (estado IN ('pendiente','en_curso','completado','fallo')),
-    created_at TIMESTAMPTZ DEFAULT now(),
-    ejecutado_at TIMESTAMPTZ
-);
+-- Pendiente: agregar a clientes
+whatsapp_opt_in        BOOLEAN
+whatsapp_numero        TEXT
+whatsapp_opt_in_fecha  TIMESTAMPTZ
 ```
 
 ---
 
-## JSONB — `clientes_proyectos.datos`
+## 🤖 Bots — Python + Playwright
 
-### Proyecto: `orange`
+### Estructura Real (`bot/`)
 
-```json
-{
-  "ultima_extraccion": "2026-06-02T14:30:00Z",
-  "header": {
-    "nombre": "Juan Pérez López",
-    "dni": "12345678A",
-    "direccion": "C/ Mayor 123, Madrid",
-    "seg_fijo": "N/A",
-    "seg_movil": "Básico",
-    "paquete": "Love Futbol Total 4 2024"
-  },
-  "lineas": [
-    {
-      "numero": "622534699",
-      "plan": "Línea Smartphone Sin Límites",
-      "activo_desde": "28/05/2013",
-      "etiquetas": ["Principal", "CIMA"],
-      "estado": {
-        "hotline": true,
-        "suspendida": false,
-        "impago": false,
-        "fraude": false
-      },
-      "consumo": { "datos": "28.34GB", "tipo": "ilimitados" },
-      "permanencia": { "tipo": "fecha_fin", "fecha_fin": "27/10/2027" },
-      "venta_plazos": {
-        "activa": true,
-        "cuotas": 5,
-        "importe_mensual": "48.74€",
-        "total_pendiente": "243.70€"
-      },
-      "pestanas": {
-        "destacadas": [
-          { "titulo": "Renove", "valor": "RENOVE MULTIDISPOSITIVO" }
-        ],
-        "renove": [
-          {
-            "titulo": "RENOVE MULTIDISPOSITIVO",
-            "variante": "multidispositivo"
-          }
-        ],
-        "bonos": [],
-        "sva": [],
-        "cambio_tarifa": []
-      }
-    }
-  ],
-  "permanencias_vap": [
-    {
-      "linea": "625123483",
-      "motivo": "Móvil: Descuento aplicado",
-      "fecha_inicio": "22/05/2025",
-      "fecha_fin": "22/05/2027",
-      "duracion": "24 meses",
-      "modalidad": "ESTANDAR",
-      "importe": "135,00 €",
-      "vaps": [
-        {
-          "producto": "OPPO A80 5G",
-          "cuotas": "24",
-          "importe_mensual": "6,90€",
-          "total": "41,40 €"
-        }
-      ]
-    }
-  ],
-  "descuentos": [],
-  "facturas": { "DIC": "178,59€", "ENE": "177,96€", "FEB": "183,32€" },
-  "consumo_grupo": {
-    "total": "104,75GB",
-    "limite": "ilimitados",
-    "por_linea": [{ "numero": "601262363", "consumo": "28,87GB" }]
-  },
-  "cima_global": true
-}
+```
+bot/
+├── coordinator_loop.py    ← Daemon multi-worker con heartbeat + rescate DNIs
+├── worker_loop.py         ← Worker continuo con touch + watchdog 40s
+├── login.py               ← Login Orange + extracción de datos
+├── browser_setup.py       ← Config navegador + proxy España
+├── bot_http.py            ← Cliente HTTP (API-First, no toca PostgreSQL)
+├── watchdog.py            ← Timeout por DNI
+├── cleanup_cmds.py        ← Limpieza de comandos viejos
+├── reset_queue.py         ← Reset de cola manual
+└── requirements.txt       ← Dependencias Python
+```
+
+### Arquitectura API-First
+
+```
+┌─────────────┐   POST /api/internal/bot-sync   ┌──────────┐
+│ worker_loop │ ──────────────────────────────→ │ Next.js  │
+│   (Python)  │ ←── GET /api/bot/next-dni ───── │  (VPS)   │
+│             │ ←── GET /api/bot/command ────── │          │
+│   PC Local  │ ──→ PATCH /api/bot/touch ─────→ │          │
+└─────────────┘                                  └────┬─────┘
+                                                     │
+                                               ┌─────▼─────┐
+                                               │ PostgreSQL │
+                                               └───────────┘
+```
+
+**Cero conexiones directas a PostgreSQL desde la PC local.**
+
+### Flujo de un DNI
+
+1. Worker → `GET /api/bot/next-dni` → recibe `id_cliente`
+2. Worker → `touch_dni(id_cliente)` → marca `updated_at = now()`
+3. Worker → login + extracción en Pangea Orange
+4. Worker → `POST /api/internal/bot-sync` → backend guarda JSONB
+5. Repite
+
+### Sistema Anti-Pérdida de DNIs
+
+| Mecanismo | Qué hace |
+|---|---|
+| `touch_dni()` | Worker actualiza `updated_at` al tomar DNI y en cada reintento de login |
+| `FOR UPDATE SKIP LOCKED` | Evita que 2 workers tomen el mismo DNI |
+| `rescue_stale_dnis()` | Coordinator resetea DNIs en `en_progreso` con >30 min sin touch |
+| Watchdog 40s | Si extracción se cuelga, timeout + reintento |
+| `restart_dead_workers()` | Coordinator reinicia workers que mueren |
+
+### Control Multi-Máquina
+
+```
+Frontend → POST /api/bot/command { maquina: "vps-1", comando: "iniciar", workers: 5 }
+         → BD: comandos_bot (maquina_destino = "vps-1", estado = "pendiente")
+
+Coordinator en VPS → GET /api/bot/command?maquina=vps-1 → solo comandos para él
+                  → spawn_workers(5)
+                  → heartbeat PATCH /api/maquinas cada 30s
 ```
 
 ---
 
-## Concurrencia y Escenarios de Fallo
+## 📞 VPBX — Integración Telefónica
 
-### 1. Bloqueos y Condiciones de Carrera
+### Endpoints Implementados
 
-#### Escenario: Dos asesores tipifican el mismo cliente a la vez
+| Endpoint | Función |
+|---|---|
+| `POST /api/vpbx/originate` | Click2Call |
+| `POST /api/webhooks/vpbx` | RINGING / ANSWERED / HANGUP |
+| `lib/vpbx.ts` | Cliente HTTP VPBX |
 
-```
-Asesor A click "Venta"        Asesor B click "No Interesa"
-           │                            │
-           ▼                            ▼
-    UPDATE pipeline SET           UPDATE pipeline SET
-    estado='venta'                estado='no_interesa'
-    WHERE id_cliente=X            WHERE id_cliente=X
-           │                            │
-           ▼                            ▼
-     Gana el último en escribir → ⚠️ Se pisa el estado
-```
+### Pendiente
 
-**Solución:** `SELECT ... FOR UPDATE` (bloqueo pesimista) o `updated_at` como condición de update.
-
-```sql
--- Transacción atómica
-BEGIN;
-  SELECT * FROM pipeline WHERE id = X FOR UPDATE;
-  -- Verificar que nadie más lo tocó
-  UPDATE pipeline SET estado = 'venta', ultimo_cambio = now()
-  WHERE id = X;
-COMMIT;
-```
-
-#### Escenario: El bot y un asesor modifican el mismo registro
-
-```
-Bot: extrae datos → UPDATE clientes_proyectos SET datos = {...}
-Asesor: tipifica → UPDATE pipeline SET estado = 'contactado'
-
-No hay conflicto porque son tablas diferentes.
-El bot escribe en clientes_proyectos.datos
-El asesor escribe en pipeline.estado
-```
-
-**No hay condición de carrera** entre bot y frontend.
-
-#### Escenario: Dos workers del bot procesan el mismo DNI
-
-```
-Worker A procesa DNI 12345678A
-Worker B procesa DNI 12345678A (lo mismo)
-
-→ UPSERT: el segundo UPDATE sobrescribe al primero
-→ Se pierden datos si el primero tenía más info que el segundo
-```
-
-**Solución:** Cada worker toma un DNI exclusivo con `UPDATE ... LIMIT 1` atómico:
-
-```sql
-WITH tomado AS (
-  UPDATE clientes_proyectos
-  SET datos = jsonb_set(datos, '{estado}', '"procesando"')
-  WHERE id = (
-    SELECT id FROM clientes_proyectos
-    WHERE proyecto_id = 1 AND datos->>'estado' = 'pendiente'
-    LIMIT 1
-    FOR UPDATE SKIP LOCKED
-  )
-  RETURNING id
-)
-SELECT * FROM clientes_proyectos WHERE id IN (SELECT id FROM tomado);
-```
-
-`FOR UPDATE SKIP LOCKED` evita que dos workers tomen el mismo registro.
+- Redis para cola de webhooks (responder <50ms)
+- Rate limiting en Click2Call (5s debounce)
+- CDR sync automático
+- Grabaciones → Cloudflare R2
 
 ---
 
-### 2. Deadlocks
+## 📱 WhatsApp — Meta Cloud API (Pendiente)
 
-#### Escenario: Deadlock entre workers
-
-```
-Worker A: UPDATE clientes_proyectos WHERE id=1
-Worker B: UPDATE clientes_proyectos WHERE id=2
-Worker A: UPDATE pipeline WHERE id_cliente=1  ← espera lock de B
-Worker B: UPDATE pipeline WHERE id_cliente=2  ← espera lock de A
-                              → DEADLOCK!
-```
-
-**Solución:** Siempre actualizar en el mismo orden de tablas:
-
-1. Primero `clientes_proyectos`
-2. Luego `pipeline`
-3. Luego `historial`
-
-**Y timeout:** PostgreSQL mata el deadlock automáticamente después de `deadlock_timeout` (1s por defecto). El worker reintenta.
+- Conexión directa Meta API
+- Webhooks entrantes → `/api/webhooks/whatsapp`
+- Tabla `whatsapp_mensajes`
+- Plantillas: Opt-In + Alerta Renove
+- Panel flotante en frontend
 
 ---
 
-### 3. Timeouts y Conexiones
+## 🚀 Deploy — Plan
 
-#### Escenario: 20 workers + 100 asesores → muchas conexiones a PostgreSQL
-
-**Riesgo:** Cada worker abre una conexión. Cada página del frontend abre otra. Se agota el pool.
-
-**Solución:**
-
-- Pool de conexiones: `pgbouncer` o `pg-pool` en Node.js
-- Máximo 20 conexiones simultáneas desde el frontend
-- Workers usan pool compartido (service_role) con máximo 10 conexiones
-- Las queries lentas se matan después de 30s (`statement_timeout`)
-
-```typescript
-// lib/db.ts
-import { Pool } from "pg";
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 20, // Máximo 20 conexiones simultáneas
-  idleTimeoutMillis: 30000,
-  statement_timeout: 30000, // Queries lentas: kill después de 30s
-});
-```
+| Fase | Objetivo |
+|---|---|
+| Actual | Desarrollo local (Windows, PostgreSQL puerto 5433) |
+| Próximo | `output: 'standalone'` en Next.js, probar build de producción |
+| VPS | Hetzner CPX31/CPX41 + Coolify + PostgreSQL + Redis |
+| Almacenamiento | Cloudflare R2 para grabaciones VPBX (ciclo de vida 6 meses) |
 
 ---
 
-### 4. Reintentos y Fallos de Red
+## 📋 API Routes — Inventario
 
-#### Escenario: Orange falla, proxy muere, red se cae
-
-**El bot debe:**
-
-1. Reintentar login hasta 60s entre intentos (infinito si es error de sesiones)
-2. Si un proxy falla 3 veces → marcarlo como caído y usar otro
-3. Si Orange responde con error → marcar DNI como `error_reintentar` y seguir
-4. Si la BD no responde → esperar 5s y reintentar, hasta 3 veces
-5. Si todo falla → loguear y esperar 30s antes de reintentar
-
-```python
-# Bot strategy
-MAX_REINTENTOS_PROXY = 3
-MAX_REINTENTOS_DB = 3
-ESPERA_BASE = 5  # segundos
-```
-
-#### Escenario: 500 asesores hacen clic en "Llamar" a la vez
-
-**Riesgo:** Click2Call masivo satura VPBX y PostgreSQL.
-
-**Solución:**
-
-- Rate limiting en API: máximo 1 llamada por asesor cada 5 segundos
-- Click2Call es asíncrono: el frontend llama a la API, la API lanza la llamada VPBX, responde OK sin esperar que el asesor descuelgue
-- El frontend se actualiza vía WebSocket cuando el asesor descuelga
-
-```typescript
-// Rate limiter simple en Next.js API
-const RATE_LIMIT = new Map<string, number>();
-
-export async function POST(req: Request) {
-  const asesorId = req.headers.get("x-asesor-id");
-  const lastCall = RATE_LIMIT.get(asesorId);
-
-  if (lastCall && Date.now() - lastCall < 5000) {
-    return Response.json({ error: "Demasiado rápido" }, { status: 429 });
-  }
-
-  RATE_LIMIT.set(asesorId, Date.now());
-  // ... lanzar llamada VPBX
-}
-```
+| Ruta | Método | Descripción |
+|---|---|---|
+| /api/auth/[...nextauth] | * | Autenticación |
+| /api/clientes | GET | Clientes con datos del bot (join + transform) |
+| /api/clientes/[id] | GET, PATCH | Ficha individual + editar tipo_persona |
+| /api/proyectos | GET | Catálogo de proyectos |
+| /api/pipeline | GET | Pipeline por cliente |
+| /api/usuarios | GET | Lista de usuarios |
+| /api/documentos/upload | POST | Subir archivo .csv/.txt/.xlsx |
+| /api/documentos/cola | GET | Estado de la cola de DNIs |
+| /api/proxies | GET, POST, DELETE | CRUD proxies (proxies.txt) |
+| /api/maquinas | GET, POST, PATCH, DELETE | CRUD máquinas + heartbeat |
+| /api/bot/command | GET, POST | Control remoto multi-máquina |
+| /api/bot/next-dni | GET | Siguiente DNI pendiente (FOR UPDATE SKIP LOCKED) |
+| /api/bot/touch | PATCH | Mantener vivo `updated_at` del DNI |
+| /api/bot/reset-stale | POST | Rescatar DNIs atascados (>30 min) |
+| /api/internal/bot-sync | POST | Guardar resultado del bot (API-First) |
+| /api/vpbx/originate | POST | Click2Call |
+| /api/webhooks/vpbx | POST | Callbacks VPBX |
 
 ---
 
-### 5. Seguridad
+## 🔐 Roles del Sistema
 
-#### Escenario: Un asesor modifica el pipeline de otro asesor
-
-**Solución:** RLS a nivel de API (PostgreSQL + middleware de Next.js):
-
-```typescript
-// API route protegida
-export async function PATCH(req: Request) {
-  const session = await getSession(req);
-  const body = await req.json();
-
-  // Un asesor solo puede modificar sus propios registros
-  if (session.rol === "asesor") {
-    const result = await db.query(
-      `UPDATE pipeline SET estado = $1
-       WHERE id = $2 AND asesor_id = $3`,
-      [body.estado, body.id, session.userId],
-    );
-  }
-}
-```
-
-#### Escenario: SQL injection
-
-**Solución:** Siempre usar queries parametrizadas (nunca concatenar strings).
-
-```typescript
-//  MALO
-await db.query(`SELECT * FROM clientes WHERE dni = '${dni}'`);
-
-//  BUENO
-await db.query("SELECT * FROM clientes WHERE dni = $1", [dni]);
-```
+| Rol | Acceso |
+|---|---|
+| Asesor | Dashboard, Power Dialer, Agenda, Wikiratioo |
+| Supervisor | Dashboard, Clientes, Power Dialer, Agenda, Metas, Alertas |
+| Jefe Área | Dashboard, Clientes, Proyectos, Metas, Alertas, Usuarios |
+| Back Office | Dashboard, Tramitación |
+| Admin/IT | Dashboard, Clientes, Usuarios, Infraestructura, Bots, Documentos |
+| Desarrollador | Todo |
 
 ---
 
-### 6. Pérdida de Datos
-
-#### Escenario: El bot escribe datos corruptos en JSONB
-
-**Solución:**
-
-- Validar JSON antes de insertar: `jsonb` type de PostgreSQL rechaza JSON inválido
-- Worker valida estructura mínima antes de escribir
-- Tabla `historial` guarda un respaldo del raw data extraído
-
-```python
-# En el worker
-def validar_datos_extraccion(datos: dict) -> bool:
-    """Valida que los datos tengan la estructura mínima esperada."""
-    campos_requeridos = ['lineas', 'header']
-    for campo in campos_requeridos:
-        if campo not in datos:
-            log(f"[VALIDACION] Falta campo requerido: {campo}")
-            return False
-
-    if not isinstance(datos.get('lineas'), list):
-        return False
-
-    return True
-```
-
-#### Escenario: Se borra un registro accidentalmente
-
-**Solución:**
-
-- `ON DELETE CASCADE` controlado: solo en tablas hijas
-- `deleted_at` (soft delete) en tablas críticas: `clientes`, `pipeline`
-- Logs de cambios: tabla `auditoria` para cambios de estado en pipeline
-
-```sql
--- Soft delete en pipeline
-ALTER TABLE pipeline ADD COLUMN deleted_at TIMESTAMPTZ;
--- En vez de DELETE, hacer:
-UPDATE pipeline SET deleted_at = now() WHERE id = X;
-```
-
----
-
-### 7. Escalabilidad
-
-#### Escenario: 10,000 DNIs encolados, 20 workers procesando
-
-**Cuello de botella:**
-
-- 20 navegadores Chrome abiertos → ~20 GB RAM
-- 20 conexiones PostgreSQL ocupadas constantemente
-- Orange limita sesiones simultáneas
-
-**Soluciones:**
-
-- Máximo 10 workers por máquina (por RAM)
-- Si se necesita más, distribuir en varias máquinas (cada una con su coordinator)
-- Orange permite ~3-5 sesiones simultáneas por cuenta → usar cola, no workers paralelos
-
-```python
-# Coordinator auto-limita según recursos del sistema
-import psutil
-
-def calcular_workers_optimos():
-    ram_disponible = psutil.virtual_memory().available / (1024**3)  # GB
-    return max(1, min(10, int(ram_disponible / 2)))  # ~2GB por worker
-```
-
----
-
-## Matriz de Escenarios de Fallo
-
-| #   | Escenario                           | Probabilidad | Impacto | Mitigación                                  |
-| --- | ----------------------------------- | ------------ | ------- | ------------------------------------------- |
-| 1   | Dos workers toman mismo DNI         | Alta         | Medio   | `FOR UPDATE SKIP LOCKED`                    |
-| 2   | Deadlock entre workers              | Baja         | Alto    | Orden fijo de tablas + timeout              |
-| 3   | Pool de BD se agota                 | Media        | Alto    | Pool de 20 conexiones + statement_timeout   |
-| 4   | Proxy muere                         | Alta         | Bajo    | Reintentar con otro proxy                   |
-| 5   | Orange caído                        | Media        | Alto    | Reintentos infinitos c/60s                  |
-| 6   | Asesor modifica datos ajenos        | Baja         | Medio   | RLS por API + middleware                    |
-| 7   | SQL injection                       | Baja         | Crítico | Queries parametrizadas                      |
-| 8   | JSON corrupto en BD                 | Baja         | Medio   | Validación antes de insertar                |
-| 9   | Datos borrados por error            | Baja         | Alto    | Soft delete en tablas críticas              |
-| 10  | Pico de 500 llamadas Click2Call     | Baja         | Medio   | Rate limiting + cola asíncrona              |
-| 11  | Bot se cuelga y no reporta          | Media        | Medio   | Watchdog: si no heartbeat > 2min, reiniciar |
-| 12  | Sesiones de Orange saturadas        | Alta         | Medio   | Reintentos infinitos c/60s                  |
-| 13  | RAM insuficiente en máquina del bot | Media        | Alto    | Auto-límite de workers                      |
-| 14  | Disco lleno de logs                 | Baja         | Medio   | Rotación de logs automática                 |
-
----
-
-## Integración VPBX
-
-### API VPBX
-
-| Endpoint                         | Uso                                               |
-| -------------------------------- | ------------------------------------------------- |
-| `GET /api/originatecall/FROM/TO` | Click2Call (suena en extensión, llama al cliente) |
-| `POST /api/cdr`                  | Consultar registro de llamadas                    |
-| `GET /api/cdr/{callId}`          | Datos de una llamada                              |
-| `POST /api/cdrcount`             | Contar llamadas                                   |
-| `GET /api/recording/{callId}`    | Descargar grabación MP3                           |
-| `GET /api/agent`                 | Listar agentes                                    |
-| `Webhook`                        | RINGING / ANSWERED / HANGUP                       |
-
-### Lógica de Re-Análisis
-
-```
-CDR dice          | Pipeline dice  | Acción
-──────────────────|────────────────|──────────────────────
-Llamó + contestó  | venta          | Re-analizar en 3 meses
-Llamó + contestó  | no_interesa    | No re-analizar
-Llamó + NO contestó| (vacío)       | Re-analizar en 7 días
-NO llamó          | (vacío)        | Re-analizar AHORA
-NO llamó          | venta          | 🚩 Posible fraude
-```
-
----
-
-## Roles del Sistema
-
-| Rol             | Acceso principal                                                                |
-| --------------- | ------------------------------------------------------------------------------- |
-| **Asesor**      | Dashboard, Power Dialer, Agenda, Wikiratioo                                     |
-| **Supervisor**  | Dashboard, Clientes, Power Dialer, Agenda, Metas, Alertas                       |
-| **Jefe Área**   | Dashboard, Clientes, Proyectos, Metas, Alertas, Usuarios, Infraestructura, Bots |
-| **Back Office** | Dashboard, Tramitacion                                                          |
-| **Admin/IT**    | Dashboard, Clientes, Usuarios, Infraestructura, Bots, Documentos                |
-
----
-
-## Pipeline Comercial
+## 📐 Pipeline Comercial
 
 ```
 Pendiente → Contactado → Interesado → Negociación → Venta → Tramitado → Activado
-                                                         → No Interesa
-                                                         → No Contesta → reintentar 7d
-```
-
-Venta → re-analizar en 3 meses (el bot revisa si hay nueva oportunidad).
-
----
-
-## Wikiratioo — Formación
-
-```
-Cursos (video, PDF) → Cuestionarios → Evaluación automática → Certificado
-Admin crea cursos → Asigna a roles → Asesor completa → Progreso visible
+                                                       → No Interesa
+                                                       → No Contesta → reintentar 7d
 ```
 
 ---
 
-## Plan de Deploy
+## 🔮 Roadmap
 
-| Fase                        | Frontend             | BD                  | Archivos                  |
-| --------------------------- | -------------------- | ------------------- | ------------------------- |
-| Desarrollo                  | `localhost:3000`     | PostgreSQL local    | Carpeta `uploads/`        |
-| Producción inicial          | Vercel Free          | Render Free ($0)    | Cloudflare R2 (10GB free) |
-| Crecimiento (+100 asesores) | Vercel Pro ($20/mes) | Render Pro ($7/mes) | R2 pago (~$0.015/GB/mes)  |
+| Prioridad | Tarea |
+|---|---|
+| 🔴 AHORA | Probar bot con Pangea online |
+| 🔴 AHORA | Batching de 20 DNIs en worker |
+| 🟡 PRONTO | `output: standalone` para build de producción |
+| 🟡 PRONTO | Redis para colas + webhooks VPBX |
+| 🟡 PRONTO | Campos RGPD en clientes |
+| 🟢 DESPUÉS | WhatsApp Meta API |
+| 🟢 DESPUÉS | Power Dialer funcional |
+| 🟢 DESPUÉS | Dashboards por rol con métricas reales |
+| ⬜ FUTURO | Bots Mainjobs + Impresoras |
+| ⬜ FUTURO | Wikiratioo (formación) |
+| ⬜ FUTURO | Deploy a VPS con Coolify |
+
+---
+
+## 📱 WhatsApp + Flujo Renove — Diseño Detallado
+
+### Objetivo
+
+Automatizar la comunicación con clientes que tienen dispositivos en renovación,
+cumpliendo con RGPD (doble opt-in) y usando Meta Cloud API directamente (sin n8n).
+
+### Tablas Necesarias
+
+#### `whatsapp_mensajes`
+
+```sql
+CREATE TABLE whatsapp_mensajes (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    id_cliente TEXT NOT NULL REFERENCES clientes(id_cliente),
+    direccion TEXT NOT NULL CHECK (direccion IN ('entrante','saliente')),
+    tipo TEXT NOT NULL,
+        CHECK (tipo IN ('opt_in_request','opt_in_response',
+                        'alerta_renove','manual','respuesta_cliente')),
+    mensaje TEXT NOT NULL,
+    plantilla_meta TEXT,               -- Nombre de la plantilla de Meta
+    wa_message_id TEXT,                 -- ID devuelto por Meta API
+    wa_status TEXT,                     -- sent, delivered, read, failed
+    metadatos JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_wa_cliente ON whatsapp_mensajes (id_cliente, created_at DESC);
+CREATE INDEX idx_wa_status ON whatsapp_mensajes (wa_status);
+```
+
+#### Ampliación RGPD en `clientes`
+
+```sql
+ALTER TABLE clientes ADD COLUMN whatsapp_opt_in BOOLEAN DEFAULT false;
+ALTER TABLE clientes ADD COLUMN whatsapp_numero TEXT;
+ALTER TABLE clientes ADD COLUMN whatsapp_opt_in_fecha TIMESTAMPTZ;
+ALTER TABLE clientes ADD COLUMN alertas_fidelizacion BOOLEAN DEFAULT false;
+```
+
+### Flujo 1: Doble Opt-In (Activación desde el CRM)
+
+```
+Asesor en CRM
+  │
+  ├─ Ve ficha del cliente
+  ├─ Activa switch "Alertas de Fidelización"
+  ├─ Ingresa número de WhatsApp del cliente
+  └─ Click "Enviar Opt-In"
+       │
+       ▼
+  POST /api/whatsapp/opt-in-request
+       │
+       ├─ Valida: número español (+34, 9 dígitos)
+       ├─ Guarda en clientes: alertas_fidelizacion = true, whatsapp_numero = X
+       ├─ Inserta en whatsapp_mensajes: tipo = 'opt_in_request'
+       └─ Dispara Plantilla Meta API 1:
+            "Hola {nombre}, ¿autorizas recibir alertas de fidelización
+             de Orange por WhatsApp? Responde SI para aceptar."
+                 │
+                 ▼
+  Cliente responde "SI" por WhatsApp
+       │
+       ▼
+  POST /api/webhooks/whatsapp (Meta envía)
+       │
+       ├─ Detecta keyword "SI" en respuesta a plantilla opt_in
+       ├─ Actualiza clientes: whatsapp_opt_in = true, whatsapp_opt_in_fecha = now()
+       ├─ Inserta en whatsapp_mensajes: tipo = 'opt_in_response'
+       └─ Responde al cliente: "¡Confirmado! Te avisaremos cuando
+            detectemos oportunidades de renovación."
+```
+
+### Flujo 2: Alerta Renove Automática (Disparo desde el Bot)
+
+```
+Bot extrae datos de Orange
+  │
+  ├─ Detecta línea con variante_renove != "N/A"
+  └─ Envía JSON con el campo ya existente: tiene_renove = true,
+       variante_renove = "Renove mixto al mejor precio..."
+            │
+            ▼
+  POST /api/internal/bot-sync
+       │
+       ├─ Backend recibe los datos
+       ├─ Lee el flag: datos.lineas[].tiene_renove === true
+       ├─ Cruza con BD:
+       │   SELECT whatsapp_opt_in, whatsapp_numero, alertas_fidelizacion
+       │   FROM clientes WHERE id_cliente = $1
+       │
+       ├─ SI whatsapp_opt_in = true AND alertas_fidelizacion = true:
+       │   │
+       │   ├─ Dispara Plantilla Meta API 2 (Alerta Renove):
+       │   │   "{nombre}, hemos detectado que tu línea {numero}
+       │   │    tiene disponible un {variante_renove}.
+       │   │    ¿Quieres que te llamemos para aprovecharlo?"
+       │   │
+       │   ├─ Inserta en whatsapp_mensajes: tipo = 'alerta_renove'
+       │   └─ Inserta en historial: tipo = 'whatsapp',
+       │        descripcion = 'Alerta Renove enviada automáticamente'
+       │
+       └─ SI NO tiene opt-in → no hace nada, solo guarda los datos
+```
+
+### Flujo 3: WhatsApp Entrante (Cliente responde)
+
+```
+Cliente envía mensaje por WhatsApp
+       │
+       ▼
+  POST /api/webhooks/whatsapp (Meta webhook)
+       │
+       ├─ Busca cliente por número en clientes.whatsapp_numero
+       ├─ Inserta en whatsapp_mensajes: tipo = 'respuesta_cliente'
+       └─ Empuja evento a frontend vía Pusher/SSE:
+            { tipo: 'whatsapp_entrante', id_cliente, mensaje }
+                 │
+                 ▼
+  Frontend (Zustand store)
+       │
+       ├─ Notificación toast: "Nuevo mensaje de {nombre}"
+       └─ Panel flotante de chat se actualiza en tiempo real
+```
+
+### Endpoints WhatsApp (Pendientes)
+
+| Ruta | Método | Descripción |
+|---|---|---|
+| /api/whatsapp/opt-in-request | POST | Dispara plantilla de opt-in |
+| /api/whatsapp/send | POST | Envía mensaje manual desde el CRM |
+| /api/webhooks/whatsapp | POST | Recibe mensajes entrantes de Meta |
+| /api/whatsapp/mensajes | GET | Historial de chat por cliente |
+
+### UI: Switch de Alertas de Fidelización
+
+En el desplegable de Clientes (FichaCliente), debajo del tipo de persona:
+
+```
+┌─────────────────────────────────────────┐
+│ Alertas de Fidelización  [ switch ON/OFF ] │
+│                                         │
+│ Si está ON:                             │
+│   WhatsApp: [ input: +34 6XX XXX XXX  ] │
+│   Estado Opt-In: ✅ Confirmado / ⏳ Pendiente / ❌ No autorizado │
+│                                         │
+│ [Botón: Enviar solicitud Opt-In]        │
+└─────────────────────────────────────────┘
+```
+
+### Panel de Chat Flotante (Zustand)
+
+```typescript
+// stores/chat-store.ts
+interface ChatState {
+  abierto: boolean;
+  clienteActual: string | null;
+  mensajes: Mensaje[];
+  noLeidos: number;
+  abrirChat: (idCliente: string) => void;
+  cerrarChat: () => void;
+  recibirMensaje: (msg: Mensaje) => void;
+}
+```
+
+El panel aparece en la esquina inferior derecha como un modal flotante,
+estilo WhatsApp Web, accesible desde cualquier página del CRM.
+Comparte diseño unificado con el modal de Tramitación.
+
+---
+
+## 🔔 Notificaciones y Tipificación — Diseño Detallado
+
+### Tipos de Notificación
+
+| Tipo | Disparador | Canal | Destino |
+|---|---|---|---|
+| Alerta Renove | Bot detecta renove + opt-in activo | WhatsApp (Meta) | Cliente |
+| Opt-In Request | Asesor activa switch en CRM | WhatsApp (Meta) | Cliente |
+| Lead Asignado | Supervisor asigna lead | In-App (Pusher/SSE) | Asesor |
+| Callback Pendiente | Agenda programa callback | In-App + Toast | Asesor |
+| Cliente Responde | Meta webhook entrante | In-App (Pusher/SSE) | Asesor asignado |
+| Bot Error | Worker muere o proxy falla | In-App (Admin) | Admin/IT |
+
+### Flujo de Tipificación en el CRM
+
+```
+Asesor en Power Dialer
+  │
+  ├─ Click2Call → VPBX originate
+  ├─ Habla con el cliente
+  └─ Al colgar → aparece modal de tipificación:
+       │
+       ├─ ¿Contactó?:  SI / NO (buzón, no contesta)
+       ├─ Estado:       Interesado / No Interesa / Callback
+       ├─ Notas:        [textarea]
+       ├─ ¿Activar Alertas Fidelización? [switch]
+       │    └─ Si ON → [input WhatsApp]
+       └─ Guardar
+            │
+            ▼
+       PATCH /api/pipeline
+            │
+            ├─ Actualiza pipeline.estado
+            ├─ Inserta en historial (vía trigger PostgreSQL)
+            ├─ Si callback → agenda en callback_at
+            └─ Si switch ON → dispara flujo Opt-In
+```
+
+### Estados de Tipificación
+
+```
+Pendiente → Contactado → Interesado → Negociación → Venta → Tramitado → Activado
+                                                  → No Interesa
+            → No Contesta → Callback programado (reintentar en 7 días)
+            → Buzón / Apagado → Callback programado
+```
+
+### Protección de Datos en Tipificación
+
+- Un asesor solo puede tipificar sus propios leads (`WHERE asesor_id = session.userId`)
+- El trigger `trigger_auditoria_pipeline` registra cada cambio de estado en `historial`
+- El campo `alertas_fidelizacion` y `whatsapp_opt_in` requieren acción explícita del asesor (no se activan solos)
+- La plantilla de Opt-In incluye texto legal RGPD
+- El cliente puede revocar opt-in respondiendo "BAJA" por WhatsApp → webhook actualiza `whatsapp_opt_in = false`
