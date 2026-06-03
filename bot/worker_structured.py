@@ -1,13 +1,12 @@
 """
-bot/worker_structured.py — Worker que extrae TODO de Orange
-============================================================
-Versión mejorada del worker original. Extrae datos completos y los
-guarda en JSONB estructurado en PostgreSQL.
-
-Para testear: python worker_structured.py --dni 12345678A
+bot/worker_structured.py v2 — Worker con API-First + Watchdog + Stealth
+========================================================================
+- API-First: hace POST a /api/internal/bot-sync (no toca PostgreSQL)
+- Watchdog 40s: aborta si un DNI tarda más de 40 segundos
+- Stealth: playwright-stealth para evadir detección anti-bot
 """
 
-import sys, time, re, json
+import sys, os, time, re, json, signal, threading
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from dotenv import load_dotenv
@@ -18,20 +17,66 @@ from login import (
     extraer_datos_cliente, realizar_login, seleccionar_marca_orange,
     abrir_nuevo_acto_comercial, manejar_cookies_flexible
 )
-from pg_client import guardar_resultado
+from bot_http import sync_resultado, sync_no_cliente
 
 load_dotenv()
 ORANGE_URL = "https://pangea.orange.es/"
+WATCHDOG_TIMEOUT = 40  # segundos
+
+# ═══════════════════════════════════════════════════════════════
+# WATCHDOG TIMER (Mata el worker si excede 40s por DNI)
+# ═══════════════════════════════════════════════════════════════
+
+class WatchdogTimeout(Exception):
+    pass
+
+
+class Watchdog:
+    def __init__(self, worker_id: str, timeout: int = WATCHDOG_TIMEOUT):
+        self.worker_id = worker_id
+        self.timeout = timeout
+        self._timer = None
+        self._timed_out = False
+
+    def _on_timeout(self):
+        self._timed_out = True
+        print(f"  [WATCHDOG] Worker {self.worker_id}: TIMEOUT {self.timeout}s - ABORTANDO")
+
+    def __enter__(self):
+        self._timed_out = False
+        self._timer = threading.Timer(self.timeout, self._on_timeout)
+        self._timer.daemon = True
+        self._timer.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._timer:
+            self._timer.cancel()
+        if self._timed_out:
+            return True  # Suprimir excepción
+        return False
+
+
+# ═══════════════════════════════════════════════════════════════
+# EXTRACCIÓN ESTRUCTURADA
+# ═══════════════════════════════════════════════════════════════
+
+def parse_estado_linea(texto):
+    return {
+        "hotline": "Hotline" in texto,
+        "suspendida": "Suspendida" in texto,
+        "impago": "Impago" in texto,
+        "fraude": "Fraude" in texto,
+    }
+
+
+def extraer_campo(texto, patron):
+    m = re.search(patron, texto)
+    return m.group(1).strip() if m else "N/A"
 
 
 def extraer_datos_estructurados(page, dni):
-    """
-    Usa extraer_datos_cliente (probado) y EXTRAE datos adicionales
-    no capturados por la función original.
-    """
-    # 1. Extracción básica (la función existente de master)
     lineas_basicas = extraer_datos_cliente(page, dni)
-
     if not lineas_basicas:
         return {"estado": "error", "error": "sin_datos"}
 
@@ -39,18 +84,14 @@ def extraer_datos_estructurados(page, dni):
     if primera.get("Nombre") == "NO ES CLIENTE":
         return {"estado": "no_cliente"}
 
-    # 2. Estructurar datos de cabecera
     header = {
         "nombre": primera.get("Nombre", "N/A"),
         "dni": primera.get("DNI", dni),
         "direccion": primera.get("Direccion", "N/A"),
         "paquete": primera.get("Paquete", "N/A"),
     }
-
-    # 3. Determinar CIMA global
     cima_global = any(l.get("es_cima") for l in lineas_basicas)
 
-    # 4. Extraer líneas con detalle adicional
     lineas_detalladas = []
     for lb in lineas_basicas:
         linea = {
@@ -63,29 +104,20 @@ def extraer_datos_estructurados(page, dni):
             "es_principal": lb.get("es_principal", False),
             "activo_desde": lb.get("activo_desde", "N/A"),
         }
-
-        # Extraer detalles adicionales de la línea desde la página
+        # Detalles extra
         try:
             bloque = page.locator(f".client-tariff-flex:has-text('{linea['numero']}')")
             if bloque.count() > 0:
                 b = bloque.first
-                # Estado de línea
                 try:
-                    status = b.locator("ocs-line-status").inner_text().strip()
-                    linea["estado"] = parse_estado_linea(status)
-                except:
-                    linea["estado"] = {}
-
-                # Consumo y permanencia
+                    linea["estado"] = parse_estado_linea(b.locator("ocs-line-status").inner_text().strip())
+                except: pass
                 try:
                     details = b.locator("ocs-line-details").inner_text().strip()
                     linea["consumo"] = extraer_campo(details, r'Consumo\s+([^\n]+)')
                     linea["permanencia"] = extraer_campo(details, r'Permanencia\s+([^\n]+)')
                     linea["vap"] = extraer_campo(details, r'Venta a Plazos\s*\n?\s*([^\n]+)')
-                except:
-                    pass
-
-                # Pestañas comerciales
+                except: pass
                 try:
                     tab_bar = b.locator(".client-tariff-section-navs")
                     if tab_bar.count() > 0:
@@ -96,29 +128,21 @@ def extraer_datos_estructurados(page, dni):
                                 nombre = tabs.nth(t_idx).inner_text().strip()
                                 tabs.nth(t_idx).click(timeout=5000)
                                 time.sleep(0.4)
-                                cards_c = b.locator(".client-tariff-section-cards")
-                                if cards_c.count() > 0:
-                                    cards = cards_c.locator("> div")
-                                    contenido = []
-                                    for c_idx in range(cards.count()):
-                                        try:
-                                            contenido.append(cards.nth(c_idx).inner_text().strip())
-                                        except:
-                                            pass
-                                    if contenido:
-                                        pestanas[nombre.lower().replace(" ", "_")] = contenido
-                            except:
-                                pass
+                                cc = b.locator(".client-tariff-section-cards")
+                                if cc.count() > 0:
+                                    cards = [cc.locator("> div").nth(i).inner_text().strip()
+                                             for i in range(cc.locator("> div").count())]
+                                    if cards:
+                                        pestanas[nombre.lower().replace(" ", "_")] = cards
+                            except: pass
                         if pestanas:
                             linea["pestanas"] = pestanas
-                except:
-                    pass
-        except:
-            pass
+                except: pass
+        except: pass
 
         lineas_detalladas.append(linea)
 
-    # 5. Extraer secciones inferiores
+    # Secciones inferiores
     secciones = {}
     for nombre, selector in [
         ("permanencias_vap", ".mod-permanency-chart"),
@@ -130,8 +154,7 @@ def extraer_datos_estructurados(page, dni):
             txt = page.locator(selector).inner_text().strip()
             if txt:
                 secciones[nombre] = txt[:1000]
-        except:
-            pass
+        except: pass
 
     return {
         "estado": "completado",
@@ -142,23 +165,36 @@ def extraer_datos_estructurados(page, dni):
     }
 
 
-def parse_estado_linea(texto):
-    """Parsea el estado de línea (Hotline, Suspendida, etc)."""
-    return {
-        "hotline": "Hotline" in texto,
-        "suspendida": "Suspendida" in texto,
-        "impago": "Impago" in texto,
-        "fraude": "Fraude" in texto,
-    }
+# ═══════════════════════════════════════════════════════════════
+# WORKER PRINCIPAL
+# ═══════════════════════════════════════════════════════════════
+
+def procesar_dni_api(page, dni):
+    """Procesa un DNI con watchdog y envía resultado vía HTTP."""
+    with Watchdog(f"dni-{dni}"):
+        datos = extraer_datos_estructurados(page, dni)
+
+    estado = datos.get("estado", "error")
+    if estado == "no_cliente":
+        sync_no_cliente(f"DNI_{dni}" if not dni.startswith(("DNI_","NIE_","NIF_")) else dni)
+        return estado
+
+    if estado == "error":
+        return estado
+
+    # Enviar al backend
+    id_cliente = f"DNI_{dni}"
+    if re.match(r'^[XYZ]', dni): id_cliente = f"NIE_{dni}"
+    elif re.match(r'^[A-Z]', dni): id_cliente = f"NIF_{dni}"
+
+    sync_resultado(id_cliente, datos)
+    return "completado"
 
 
-def extraer_campo(texto, patron):
-    """Extrae un campo con regex del texto de detalles."""
-    m = re.search(patron, texto)
-    return m.group(1).strip() if m else "N/A"
+# ═══════════════════════════════════════════════════════════════
+# TEST
+# ═══════════════════════════════════════════════════════════════
 
-
-# ── Prueba individual ──
 def test_single(dni):
     """Procesa un solo DNI para testing."""
     proxies = []
@@ -176,7 +212,15 @@ def test_single(dni):
     browser, context = crear_contexto_espana(pw, proxy_config=proxy_conf)
     page = context.new_page()
 
-    print(f"[TEST] Login Orange...")
+    # Stealth injection
+    try:
+        from playwright_stealth import stealth_sync
+        stealth_sync(page)
+        print("[TEST] Stealth activado")
+    except:
+        pass
+
+    print(f"[TEST] Login...")
     page.goto(ORANGE_URL, timeout=90000)
     manejar_cookies_flexible(page)
     realizar_login(page)
@@ -184,9 +228,9 @@ def test_single(dni):
     abrir_nuevo_acto_comercial(page)
     print("[TEST] Login OK")
 
-    print(f"[TEST] Extrayendo DNI {dni}...")
-    datos = extraer_datos_estructurados(page, dni)
-    print(json.dumps(datos, indent=2, ensure_ascii=False)[:2000])
+    print(f"[TEST] Extrayendo {dni}...")
+    resultado = procesar_dni_api(page, dni)
+    print(f"[TEST] Resultado: {resultado}")
 
     browser.close()
     pw.stop()
