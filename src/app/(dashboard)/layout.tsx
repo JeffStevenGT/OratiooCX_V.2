@@ -4,10 +4,8 @@ import Sidebar from '@/components/shared/Sidebar';
 
 export default async function DashboardLayout({
   children,
-  role,
 }: {
   children: React.ReactNode;
-  role?: string;
 }) {
   const session = await auth();
   if (!session?.user) redirect('/login');

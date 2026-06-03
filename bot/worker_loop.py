@@ -81,8 +81,20 @@ def next_dni():
     return data.get("dni") if data else None
 
 def check_command():
+    """Retorna lista de comandos como objetos {comando, parametros}."""
     data = api_get("/api/bot/command")
-    return data.get("comandos", []) if data else []
+    if not data:
+        return []
+    # comandos ahora vienen como objetos, no strings
+    cmds = data.get("comandos", [])
+    result = []
+    for c in cmds:
+        if isinstance(c, dict):
+            result.append(c)
+        elif isinstance(c, str):
+            # compatibilidad hacia atrás
+            result.append({"comando": c, "parametros": {}})
+    return result
 
 def sync_result(id_cliente, datos, estado="completado"):
     return api_post("/api/internal/bot-sync", {"id_cliente": id_cliente, "datos": datos, "estado": estado})
@@ -197,14 +209,17 @@ def main():
 
     while not detenido:
         # Verificar comandos del frontend
-        for cmd in check_command():
-            print(f"[CMD] Recibido: {cmd}")
+        for cmd_obj in check_command():
+            cmd = cmd_obj.get("comando", "") if isinstance(cmd_obj, dict) else cmd_obj
+            params = cmd_obj.get("parametros", {}) if isinstance(cmd_obj, dict) else {}
+            print(f"[CMD] Recibido: {cmd} {params}")
             if cmd == "detener":
                 detenido = True
                 break
             if cmd == "pausar":
-                print("[CMD] Pausado. Esperando 10s...")
-                time.sleep(10)
+                pausa = params.get("segundos", 10)
+                print(f"[CMD] Pausado. Esperando {pausa}s...")
+                time.sleep(pausa)
 
         if detenido: break
 
