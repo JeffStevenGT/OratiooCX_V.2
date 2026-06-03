@@ -40,6 +40,8 @@ export default function ClientesPage() {
   const [dateTo, setDateTo] = useState('');
   const [expandido, setExpandido] = useState<string | null>(null);
   const [editingTipo, setEditingTipo] = useState<string | null>(null);
+  const [deteccionesCache, setDeteccionesCache] = useState<Record<string, any[]>>({});
+  const [loadingDetecciones, setLoadingDetecciones] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
@@ -251,7 +253,19 @@ export default function ClientesPage() {
                 {paged.map(c => (
                   <>
                     <tr key={c.id_cliente}
-                      onClick={() => setExpandido(expandido === c.id_cliente ? null : c.id_cliente)}
+                      onClick={async () => {
+                        const nuevo = expandido === c.id_cliente ? null : c.id_cliente;
+                        setExpandido(nuevo);
+                        if (nuevo && !deteccionesCache[nuevo]) {
+                          setLoadingDetecciones(true);
+                          try {
+                            const res = await fetch(`/api/clientes/${nuevo}`);
+                            const data = await res.json();
+                            setDeteccionesCache(prev => ({ ...prev, [nuevo]: data.detecciones || [] }));
+                          } catch { /* */ }
+                          setLoadingDetecciones(false);
+                        }
+                      }}
                       className={`border-b border-[#f0f0f8] hover:bg-[#f8f7fa] cursor-pointer transition-colors ${
                         expandido === c.id_cliente ? 'bg-[#f5f0fa]' : ''
                       }`}>
@@ -381,6 +395,20 @@ export default function ClientesPage() {
                             {c.estado === 'no_cliente' && (
                               <p className="text-xs text-red-500">❌ No es cliente de Orange</p>
                             )}
+
+                            {/* Cambios detectados */}
+                            {deteccionesCache[c.id_cliente] && deteccionesCache[c.id_cliente].length > 0 && (
+                              <div>
+                                <h4 className="text-xs font-semibold text-[#1a1030] mb-2 flex items-center gap-1">
+                                  🔍 Cambios detectados ({deteccionesCache[c.id_cliente].length})
+                                </h4>
+                                <div className="flex flex-wrap gap-1">
+                                  {deteccionesCache[c.id_cliente].map((d: any, i: number) => (
+                                    <CambioBadge key={i} deteccion={d} />
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -413,6 +441,34 @@ export default function ClientesPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function CambioBadge({ deteccion }: { deteccion: any }) {
+  const labels: Record<string, { text: string; color: string }> = {
+    linea_nueva: { text: '📱 Nueva línea', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+    linea_eliminada: { text: '📴 Línea dada de baja', color: 'bg-red-100 text-red-700 border-red-200' },
+    renove_nuevo: { text: '🎁 Nuevo Renove', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+    renove_cambio: { text: '🔄 Cambió Renove', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+    permanencia_vencida: { text: '⏰ Permanencia venció', color: 'bg-amber-100 text-amber-700 border-amber-200' },
+    permanencia_cambio: { text: '📅 Cambió permanencia', color: 'bg-amber-100 text-amber-700 border-amber-200' },
+    consumo_cambio: { text: '📊 Cambió consumo', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
+    estado_cambio: { text: '⚠️ Cambió estado', color: 'bg-orange-100 text-orange-700 border-orange-200' },
+    cima_nuevo: { text: '⭐ Nuevo CIMA', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+    cima_perdido: { text: '💔 Perdió CIMA', color: 'bg-red-100 text-red-700 border-red-200' },
+    tv_nuevo: { text: '📺 Nuevo TV', color: 'bg-purple-100 text-purple-700 border-purple-200' },
+    tv_perdido: { text: '📺 Perdió TV', color: 'bg-gray-100 text-gray-600 border-gray-200' },
+    cliente_recuperado: { text: '🔙 Cliente volvió', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+    cliente_perdido: { text: '🚫 Cliente se fue', color: 'bg-red-100 text-red-700 border-red-200' },
+    paquete_cambio: { text: '📦 Cambió paquete', color: 'bg-slate-100 text-slate-700 border-slate-200' },
+  };
+  const info = labels[deteccion.tipo] || { text: deteccion.tipo, color: 'bg-gray-100 text-gray-600 border-gray-200' };
+  return (
+    <div className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[9px] font-medium border ${info.color}`}
+         title={deteccion.linea_numero ? `Línea ${deteccion.linea_numero}: ${deteccion.valor_anterior || ''} → ${deteccion.valor_nuevo || ''}` : (deteccion.valor_nuevo || '')}>
+      {info.text}
+      {deteccion.linea_numero && <span className="font-mono opacity-70">{deteccion.linea_numero.slice(-4)}</span>}
     </div>
   );
 }

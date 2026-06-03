@@ -20,7 +20,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     if (!cliente) return NextResponse.json({ error: 'No encontrado' }, { status: 404 });
 
-    return NextResponse.json(cliente);
+    // Cargar detecciones de cambios
+    const { rows: detecciones } = await pool.query(
+      `SELECT * FROM detecciones
+       WHERE id_cliente = $1
+       ORDER BY created_at DESC
+       LIMIT 50`,
+      [id]
+    );
+
+    return NextResponse.json({ ...cliente, detecciones });
   } catch {
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
