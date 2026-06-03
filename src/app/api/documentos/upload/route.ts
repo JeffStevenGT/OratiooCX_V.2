@@ -79,11 +79,12 @@ export async function POST(req: Request) {
     // Insertar clientes y asignar al proyecto orange
     for (const dni of dnis) {
       const tipo = /^[XYZ]\d/i.test(dni) ? 'NIE' : /^[A-Z]\d/i.test(dni) ? 'NIF' : 'DNI';
+      const tipo_persona = tipo === 'NIF' ? 'empresa' : 'natural';
       await pool.query(
         `INSERT INTO clientes (id_cliente, tipo_documento, numero_documento, tipo_persona)
-         VALUES ($1, $2, $3, 'natural')
+         VALUES ($1, $2, $3, $4)
          ON CONFLICT (id_cliente) DO NOTHING`,
-        [`${tipo}_${dni}`, tipo, dni]
+        [`${tipo}_${dni}`, tipo, dni, tipo_persona]
       );
 
       await pool.query(
