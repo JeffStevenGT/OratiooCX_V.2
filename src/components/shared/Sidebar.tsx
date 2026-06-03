@@ -14,7 +14,7 @@ import { signOut } from 'next-auth/react';
 import {
   LayoutDashboard, Users, Settings, Upload, LogOut,
   Shield, Phone, Calendar, BookOpen, Package, Globe,
-  AlertTriangle, Target,
+  AlertTriangle, Target, UserPlus,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -49,6 +49,7 @@ const MENU_ITEMS: {
     label: 'Gestión',
     items: [
       { to: '/tramitacion', icon: Package, label: 'Tramitación', roles: ['back_office'] },
+      { to: '/jefe', icon: UserPlus, label: 'Asignar Leads', roles: ['jefe_area', 'supervisor', 'desarrollador'] },
       { to: '/proyectos', icon: Globe, label: 'Proyectos', roles: ['jefe_area', 'desarrollador'] },
       { to: '/metas', icon: Target, label: 'Metas', roles: ['supervisor', 'jefe_area'] },
       { to: '/alertas', icon: AlertTriangle, label: 'Alertas', roles: ['supervisor', 'jefe_area'] },
