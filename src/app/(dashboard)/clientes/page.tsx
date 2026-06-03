@@ -364,11 +364,10 @@ export default function ClientesPage() {
                                           </td>
                                           <td className="px-2.5 py-1.5">
                                             <div className="flex flex-wrap gap-0.5">
-                                              {l.estado?.hotline && <span className="bg-red-100 text-red-600 rounded px-1 text-[9px]">Hotline</span>}
-                                              {l.estado?.suspendida && <span className="bg-amber-100 text-amber-600 rounded px-1 text-[9px]">Suspendida</span>}
-                                              {l.estado?.impago && <span className="bg-orange-100 text-orange-600 rounded px-1 text-[9px]">Impago</span>}
-                                              {l.estado?.fraude && <span className="bg-red-200 text-red-800 rounded px-1 text-[9px]">Fraude</span>}
-                                              {!l.estado?.hotline && !l.estado?.suspendida && !l.estado?.impago && !l.estado?.fraude && 'Activa'}
+                                              <span className={`rounded px-1 text-[9px] ${l.estado?.hotline ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-400'}`}>Hotline</span>
+                                              <span className={`rounded px-1 text-[9px] ${l.estado?.suspendida ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'}`}>Suspendida</span>
+                                              <span className={`rounded px-1 text-[9px] ${l.estado?.impago ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-400'}`}>Impago</span>
+                                              <span className={`rounded px-1 text-[9px] ${l.estado?.fraude ? 'bg-red-200 text-red-800' : 'bg-gray-100 text-gray-400'}`}>Fraude</span>
                                             </div>
                                           </td>
                                           <td className="px-2.5 py-1.5">{l.consumo || '—'}</td>
