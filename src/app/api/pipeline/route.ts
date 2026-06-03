@@ -126,3 +126,20 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
+
+// PATCH — actualizar estado de pipeline
+export async function PATCH(req: Request) {
+  try {
+    const { id, estado } = await req.json();
+    if (!id || !estado) return NextResponse.json({ error: 'Falta id o estado' }, { status: 400 });
+
+    await pool.query(
+      `UPDATE pipeline SET estado = $1, ultimo_cambio = now() WHERE id = $2 AND deleted_at IS NULL`,
+      [estado, id]
+    );
+
+    return NextResponse.json({ success: true });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
