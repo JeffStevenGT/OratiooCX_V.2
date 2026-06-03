@@ -66,7 +66,7 @@ const MENU_ITEMS: {
       { to: '/usuarios', icon: Shield, label: 'Usuarios', roles: ['jefe_area', 'desarrollador'] },
       { to: '/infraestructura', icon: Settings, label: 'Infraestructura', roles: ['it', 'desarrollador'] },
       { to: '/bots', icon: Globe, label: 'Bots', roles: ['it', 'desarrollador'] },
-      { to: '/documentos', icon: Upload, label: 'Documentos', roles: ['supervisor', 'jefe_area', 'it', 'desarrollador'] },
+      { to: '/admin/documentos', icon: Upload, label: 'Documentos', roles: ['supervisor', 'jefe_area', 'it', 'desarrollador'] },
     ],
   },
 ];
