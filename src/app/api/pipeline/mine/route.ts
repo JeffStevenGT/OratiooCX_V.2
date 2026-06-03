@@ -16,7 +16,8 @@ export async function GET(req: Request) {
              COALESCE(c.nombre_razon_social, cp.datos->'header'->>'nombre', 'Sin nombre') as nombre,
              COALESCE(cp.datos->'header'->>'paquete', 'N/A') as paquete,
              CASE WHEN (cp.datos->>'cima_global')::boolean THEN 'SI' ELSE 'NO' END as cima,
-             cp.ultima_extraccion
+             cp.ultima_extraccion,
+             (SELECT COUNT(*) FROM historial h WHERE h.id_cliente = c.id_cliente AND h.tipo = 'llamada' AND h.created_at::date = current_date)::int as intentos
       FROM pipeline pl
       JOIN clientes c ON pl.id_cliente = c.id_cliente
       JOIN clientes_proyectos cp ON c.id_cliente = cp.id_cliente
@@ -54,6 +55,7 @@ export async function GET(req: Request) {
         tiene_renove: tieneRenove ? 'SI' : 'NO',
         renove_variante: variante,
         lineas_count: lineas.length,
+        intentos: r.intentos || 0,
         lineas: lineas.map((l: any) => ({
           numero: l.numero, es_cima: l.es_cima || false,
           tiene_renove: l.tiene_renove || false, variante_renove: l.variante_renove || 'N/A',
