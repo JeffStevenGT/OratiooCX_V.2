@@ -1,29 +1,40 @@
 'use client';
 
-import { useState } from 'react';
-import { Play, Pause, RotateCcw, Square, Loader2, Globe, Users, Activity, Monitor, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Play, Pause, RotateCcw, Square, Loader2, Globe, Users, Activity, Monitor, AlertCircle, Server } from 'lucide-react';
+
+type Maquina = { id: number; nombre: string; ip: string | null; workers_max: number; workers_activos: number; estado: string; ultimo_heartbeat: string | null };
 
 export default function BotsPage() {
   const [sending, setSending] = useState<string | null>(null);
   const [lastAction, setLastAction] = useState<string | null>(null);
   const [workers, setWorkers] = useState(5);
+  const [maquina, setMaquina] = useState('*');
+  const [maquinas, setMaquinas] = useState<Maquina[]>([]);
   const [statusMsg, setStatusMsg] = useState('Esperando comando');
+
+  useEffect(() => {
+    fetch('/api/maquinas')
+      .then(r => r.json())
+      .then(setMaquinas)
+      .catch(() => {});
+  }, []);
 
   const sendCommand = async (cmd: string, label: string) => {
     setSending(cmd);
-    setStatusMsg(`Enviando "${label}"...`);
+    setStatusMsg(`Enviando "${label}" a ${maquina === '*' ? 'todas' : maquina}...`);
     try {
       const res = await fetch('/api/bot/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ comando: cmd, workers }),
+        body: JSON.stringify({ comando: cmd, workers, maquina }),
       });
       if (res.ok) {
         setLastAction(cmd);
         if (cmd === 'iniciar') {
-          setStatusMsg(`${workers} workers lanzándose`);
+          setStatusMsg(`${workers} workers en ${maquina === '*' ? 'todas las máquinas' : maquina}`);
         } else if (cmd === 'detener') {
-          setStatusMsg('Workers detenidos');
+          setStatusMsg(`Workers detenidos en ${maquina === '*' ? 'todas las máquinas' : maquina}`);
         } else if (cmd === 'pausar') {
           setStatusMsg('Workers en pausa');
         } else if (cmd === 'reanudar') {
@@ -53,23 +64,75 @@ export default function BotsPage() {
           <div>
             <p className="text-sm font-medium text-[#1a1030]">{statusMsg}</p>
             <p className="text-xs text-[#7c757c]">
-              {isRunning ? `${workers} workers configurados` : 'Coordinator en espera'}
+              {isRunning ? `${workers} workers · ${maquina === '*' ? 'todas las máquinas' : maquina}` : 'Coordinator en espera'}
             </p>
           </div>
         </div>
       </div>
+
+      {/* Máquinas conectadas */}
+      {maquinas.length > 0 && (
+        <div className="card">
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+            <Server size={16} className="text-[#0a6ea9]" />
+            Máquinas
+          </h3>
+          <div className="grid grid-cols-4 gap-3 mb-4">
+            {maquinas.map(m => (
+              <button
+                key={m.id}
+                onClick={() => setMaquina(m.nombre)}
+                className={`text-left p-3 rounded-xl border transition-all ${
+                  maquina === m.nombre
+                    ? 'border-[#0a6ea9] bg-blue-50'
+                    : 'border-[#e8dce6] bg-white hover:border-[#b8b0b8]'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`w-2 h-2 rounded-full ${
+                    m.estado === 'online' ? 'bg-emerald-400' : 'bg-gray-300'
+                  }`} />
+                  <span className="text-xs font-medium truncate">{m.nombre}</span>
+                </div>
+                <div className="text-[10px] text-[#7c757c]">
+                  {m.workers_activos}/{m.workers_max} workers
+                </div>
+              </button>
+            ))}
+            <button
+              onClick={() => setMaquina('*')}
+              className={`text-left p-3 rounded-xl border transition-all ${
+                maquina === '*'
+                  ? 'border-[#481163] bg-purple-50'
+                  : 'border-[#e8dce6] bg-white hover:border-[#b8b0b8]'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Globe size={12} className="text-[#481163]" />
+                <span className="text-xs font-medium">Todas</span>
+              </div>
+              <div className="text-[10px] text-[#7c757c]">Broadcast</div>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Control card */}
       <div className="card">
         <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
           <Activity size={16} className="text-[#0a6ea9]" />
           Control — Bot Orange
+          {maquina !== '*' && (
+            <span className="text-[10px] font-normal text-[#7c757c] ml-2">
+              → {maquina}
+            </span>
+          )}
         </h3>
 
         {/* Workers selector */}
         <div className="flex items-center gap-3 mb-4 p-3 bg-[#f8f7fa] rounded-lg">
           <Users size={16} className="text-[#7c757c]" />
-          <label className="text-sm text-[#7c757c] font-medium">Workers simultáneos:</label>
+          <label className="text-sm text-[#7c757c] font-medium">Workers:</label>
           <input
             type="number"
             min={1} max={20}
@@ -77,15 +140,16 @@ export default function BotsPage() {
             onChange={(e) => setWorkers(Math.max(1, Math.min(20, +e.target.value)))}
             className="border border-[#e0e0f0] rounded-lg px-3 py-1.5 text-sm w-16 text-center font-medium bg-white"
           />
-          <span className="text-xs text-[#7c757c]">(1–20)</span>
+          <span className="text-xs text-[#7c757c]">
+            {maquina === '*' ? 'por máquina' : `máx ${maquinas.find(m => m.nombre === maquina)?.workers_max || '?'}`}
+          </span>
         </div>
 
         {/* Info alert */}
         <div className="flex items-start gap-2 mb-4 px-3 py-2 bg-blue-50 rounded-lg border border-blue-100">
           <AlertCircle size={14} className="text-blue-500 mt-0.5" />
           <p className="text-xs text-blue-700">
-            <strong>Coordinator daemon</strong> debe estar corriendo en la máquina para que los comandos surtan efecto.
-            {' '}<code className="bg-blue-100 px-1 rounded text-[10px]">python coordinator_loop.py</code>
+            <strong>Coordinator daemon</strong> debe estar corriendo con <code className="bg-blue-100 px-1 rounded text-[10px]">--machine-name NOMBRE</code>
           </p>
         </div>
 
