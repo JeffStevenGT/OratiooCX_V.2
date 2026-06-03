@@ -95,18 +95,24 @@ extracción de leads, las llamadas, el pipeline de ventas y la formación de ase
 
 ---
 
-## 📅 Fase 5 — Pipeline CRM y Dashboards 🟢
+## 📅 Fase 5 — Pipeline, Asignación y Notificaciones 🟡
 
-**Objetivo:** Gestión comercial completa con métricas por rol.
+**Objetivo:** Distribución de leads, notificaciones por rol, liberación automática.
 
 | # | Tarea | Estado |
 |---|---|---|
 | 5.1 | Tabla pipeline + triggers de auditoría | ✅ Hecho |
-| 5.2 | Página Tramitación funcional | ⬜ |
-| 5.3 | Dashboard asesor con métricas reales | ⬜ |
-| 5.4 | Dashboard supervisor con KPIs | ⬜ |
-| 5.5 | Dashboard jefe con visión global | ⬜ |
-| 5.6 | Protección: asesor solo modifica sus propios leads | ⬜ |
+| 5.2 | Página "Asignar Leads" (jefe/supervisor selecciona y asigna) | ⬜ |
+| 5.3 | Asignación round-robin a múltiples asesores | ⬜ |
+| 5.4 | Badge de notificaciones en sidebar por rol | ⬜ |
+| 5.5 | Endpoint GET /api/pipeline/notifications | ⬜ |
+| 5.6 | Dashboard asesor: mis leads, contador de días sin tocar | ⬜ |
+| 5.7 | Liberación automática a 3 días (cron + soft delete) | ⬜ |
+| 5.8 | Leads liberados visibles para reasignación | ⬜ |
+| 5.9 | Página Tramitación (back office) | ⬜ |
+| 5.10 | Dashboard supervisor con métricas de equipo | ⬜ |
+| 5.11 | Dashboard jefe con visión global | ⬜ |
+| 5.12 | Protección: asesor solo modifica sus propios leads | ⬜ |
 
 ---
 
@@ -130,4 +136,5 @@ extracción de leads, las llamadas, el pipeline de ventas y la formación de ase
 |---|---|---|---|
 | Probar bot con Pangea | Deploy VPS + Coolify | Power Dialer VPBX | Bots nuevos |
 | Batching 20 DNIs | Redis para colas | WhatsApp + Renove | Wikiratioo |
-| | standalone build | Pipeline UI + Dashboards | Docker + escalar |
+| | Pipeline: asignación + notificaciones + liberación | | Docker + escalar |
+| | standalone build | | |

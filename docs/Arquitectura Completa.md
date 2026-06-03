@@ -222,6 +222,121 @@ Coordinator en VPS → GET /api/bot/command?maquina=vps-1 → solo comandos para
 
 ---
 
+## 📐 Pipeline — Asignación, Notificaciones y Liberación
+
+### Flujo de Distribución de Leads
+
+```
+Bot procesa DNIs durante el día
+  │
+  ▼
+Mañana siguiente: Jefe de Área / Supervisor
+  │
+  ├─ Entra a "Asignar Leads"
+  ├─ Ve todos los completados de hoy (filtrables por CIMA, Renove, etc.)
+  ├─ Selecciona leads (checkbox multiple o "todos")
+  ├─ Elige equipo y/o asesor(es)
+  └─ Click "Asignar"
+       │
+       ▼
+  POST /api/pipeline/assign
+       │
+       ├─ Inserta fila en pipeline por cada lead:
+       │   { id_cliente, proyecto_id, asesor_id, estado: "pendiente",
+       │     ultimo_cambio: now() }
+       │
+       ├─ Si hay múltiples asesores → round-robin automático
+       └─ Inserta en historial: "Lead asignado a Asesor X por Jefe Y"
+```
+
+### Página "Asignar Leads" — UI
+
+```
+┌────────────────────────────────────────────────────────┐
+│ Asignar Leads                                          │
+│                                                        │
+│ 📊 342 leads procesados hoy (filtros: CIMA, Renove)   │
+│                                                        │
+│ [☐] Seleccionar todos  |  [Filtros: CIMA ▼ Renove ▼] │
+│                                                        │
+│ ☐ DNI 1234  Juan Pérez        CIMA ✅  Renove SI      │
+│ ☐ DNI 5678  María García      CIMA ❌  Renove NO      │
+│ ☐ DNI 9012  Empresa XYZ       CIMA ✅  Renove SI      │
+│ ...                                                    │
+│                                                        │
+│ Equipo:  [España ▼]     Asesor: [Repartir entre todos ▼]│
+│ Cantidad a asignar: [50]  de 342 seleccionados         │
+│                                                        │
+│ [ Asignar 50 leads ]                                  │
+└────────────────────────────────────────────────────────┘
+```
+
+### Notificaciones por Rol
+
+| Rol | Notificación | Cuándo |
+|---|---|---|
+| Asesor | Badge en sidebar: "5 leads nuevos" | Al recibir asignación |
+| Asesor | Badge rojo: "3 leads por vencer" | Leads con 2+ días sin tocar |
+| Asesor | Toast: "Lead liberado por inactividad" | Cuando un lead vuelve al pool |
+| Supervisor | Badge: "12 leads sin asignar" | Leads procesados hoy sin dueño |
+| Supervisor | Badge: "3 leads liberados" | Leads que volvieron por inactividad |
+| Jefe Área | Badge: "342 leads para distribuir" | Al entrar después de un batch del bot |
+
+### Liberación Automática a los 3 Días
+
+```
+CRON (cada noche, 2 AM)
+  │
+  ▼
+SELECT * FROM pipeline
+WHERE estado = 'pendiente'
+  AND deleted_at IS NULL
+  AND ultimo_cambio < now() - interval '3 days'
+  │
+  ▼
+Para cada lead liberado:
+  │
+  ├─ Soft delete: UPDATE pipeline SET deleted_at = now()
+  ├─ Inserta en historial:
+  │   tipo = 'liberacion',
+  │   descripcion = 'Lead liberado automáticamente por inactividad
+  │                  (3 días sin tocar). Asesor anterior: {nombre}'
+  │
+  └─ El lead vuelve al pool:
+       → Jefe ve "leads liberados" en Asignar Leads
+       → Puede reasignarlo a otro asesor
+```
+
+### Endpoints Pipeline (Pendientes)
+
+| Ruta | Método | Descripción |
+|---|---|---|
+| /api/pipeline/assign | POST | Asigna leads a asesor(es) |
+| /api/pipeline/mine | GET | Mis leads (asesor) |
+| /api/pipeline/team | GET | Leads de mi equipo (supervisor) |
+| /api/pipeline/pool | GET | Leads sin asignar (jefe) |
+| /api/pipeline/release-stale | POST | Libera leads inactivos (cron) |
+| /api/pipeline/notifications | GET | Badge de notificaciones por rol |
+
+### Endpoint de Notificaciones
+
+```typescript
+// GET /api/pipeline/notifications
+// Response:
+{
+  nuevos: 5,          // Leads recién asignados
+  porVencer: 3,        // Leads con 2+ días sin tocar
+  liberados: 0,        // Leads liberados hoy
+  sinAsignar: 12,      // (Supervisor/Jefe) Leads sin dueño
+  totalPendientes: 47  // Total en mi pipeline
+}
+```
+
+El frontend consulta este endpoint cada 60 segundos (polling) y actualiza
+los badges del sidebar en tiempo real.
+
+---
+
 ## 📐 Pipeline Comercial
 
 ```
@@ -241,6 +356,7 @@ Pendiente → Contactado → Interesado → Negociación → Venta → Tramitado
 | 🟡 PRONTO | `output: standalone` para build de producción |
 | 🟡 PRONTO | Redis para colas + webhooks VPBX |
 | 🟡 PRONTO | Campos RGPD en clientes |
+| 🟡 PRONTO | Pipeline: Asignación de leads + notificaciones + liberación a 3 días |
 | 🟢 DESPUÉS | WhatsApp Meta API |
 | 🟢 DESPUÉS | Power Dialer funcional |
 | 🟢 DESPUÉS | Dashboards por rol con métricas reales |
