@@ -38,6 +38,16 @@ export async function POST(req: Request) {
       [id_cliente, pid, JSON.stringify(datos)]
     );
 
+    // 1b. Actualizar nombre en clientes (persiste entre reanálisis)
+    const nombre = datos?.header?.nombre;
+    if (nombre && nombre !== 'N/A' && nombre !== 'NO ES CLIENTE') {
+      await pool.query(
+        `UPDATE clientes SET nombre_razon_social = $1, updated_at = now()
+         WHERE id_cliente = $2 AND (nombre_razon_social IS NULL OR nombre_razon_social = '')`,
+        [nombre, id_cliente]
+      );
+    }
+
     // 2. Registrar en historial
     await pool.query(
       `INSERT INTO historial (id_cliente, tipo, proyecto_id, descripcion, datos)
