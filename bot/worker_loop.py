@@ -76,6 +76,17 @@ def api_post(path, data):
     }, timeout=15)
     return r.ok
 
+def api_patch(path, data):
+    r = requests.patch(f"{BACKEND_URL}{path}", json=data, headers={
+        "Content-Type": "application/json",
+        "x-bot-api-key": BOT_API_KEY,
+    }, timeout=10)
+    return r.ok
+
+def touch_dni(id_cliente: str):
+    """Actualiza updated_at para que el rescate no lo toque."""
+    api_patch("/api/bot/touch", {"id_cliente": id_cliente})
+
 def next_dni():
     data = api_get("/api/bot/next-dni")
     return data.get("dni") if data else None
@@ -273,6 +284,9 @@ def main():
 
         print(f"\n{'='*60}")
         print(f"[{datetime.now().strftime('%H:%M:%S')}] DNI: {dni} ({procesados} OK | {no_clientes} NC | {errores} ERR)")
+
+        # Touch: avisar al rescate que este DNI está siendo procesado
+        touch_dni(id_cliente)
 
         try:
             with Watchdog(f"dni-{dni}"):
