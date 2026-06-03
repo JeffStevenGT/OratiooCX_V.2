@@ -16,7 +16,7 @@ export default function BotsPage() {
   useEffect(() => {
     fetch('/api/maquinas')
       .then(r => r.json())
-      .then(setMaquinas)
+      .then(data => setMaquinas(Array.isArray(data) ? data : []))
       .catch(() => {});
   }, []);
 

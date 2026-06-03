@@ -44,7 +44,9 @@ export default function InfraestructuraPage() {
     setLoadingMaquinas(true);
     try {
       const res = await fetch('/api/maquinas');
-      setMaquinas(await res.json());
+      const data = await res.json();
+      setMaquinas(Array.isArray(data) ? data : []);
+      if (!Array.isArray(data)) setError(data.error || 'Error al cargar máquinas');
     } catch { setError('No se pudieron cargar las máquinas'); }
     setLoadingMaquinas(false);
   }, []);
