@@ -68,6 +68,7 @@ const MENU_ITEMS: {
     items: [
       { to: '/usuarios', icon: Shield, label: 'Usuarios', roles: ['jefe_area', 'desarrollador'] },
       { to: '/infraestructura', icon: Settings, label: 'Infraestructura', roles: ['it', 'desarrollador'] },
+      { to: '/config', icon: Settings, label: 'Configuración', roles: ['it', 'desarrollador'] },
       { to: '/bots', icon: Globe, label: 'Bots', roles: ['it', 'desarrollador'] },
       { to: '/admin/documentos', icon: Upload, label: 'Documentos', roles: ['supervisor', 'jefe_area', 'it', 'desarrollador'] },
     ],
@@ -148,7 +149,9 @@ export default function Sidebar({ userName, userRole, userId }: SidebarProps) {
       {/* Footer — Usuario + Logout */}
       <div className="border-t border-[#5d1a7a] p-3">
         {!collapsed && (
-          <p className="text-xs text-[#a8a0b8] truncate mb-2">{userName}</p>
+          <>
+            <a href="/perfil" className="text-xs text-[#a8a0b8] hover:text-white truncate mb-2 block">{userName}</a>
+          </>
         )}
         <button
           onClick={() => signOut({ callbackUrl: '/login' })}
