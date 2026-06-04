@@ -151,6 +151,14 @@ export default function Sidebar({ userName, userRole, userId }: SidebarProps) {
         {!collapsed && (
           <a href="/perfil" className="text-xs text-[#a8a0b8] hover:text-white truncate mb-2 block">{userName}</a>
         )}
+        <button onClick={() => {
+          const html = document.documentElement;
+          html.classList.toggle('dark');
+          localStorage.setItem('oratioo_dark', html.classList.contains('dark') ? '1' : '0');
+        }}
+          className="flex items-center gap-2 text-xs text-[#c4bcc4] hover:text-white transition-colors w-full px-1 mb-1">
+          <span>🌙</span> {!collapsed && 'Modo oscuro'}
+        </button>
         <button onClick={() => signOut({ callbackUrl: '/login' })}
           className="flex items-center gap-2 text-xs text-[#c4bcc4] hover:text-white transition-colors w-full px-1">
           <LogOut size={14} /> {!collapsed && 'Salir'}

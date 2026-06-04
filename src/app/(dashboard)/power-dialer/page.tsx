@@ -29,6 +29,7 @@ export default function PowerDialerPage() {
   const [ultimoNumero, setUltimoNumero] = useState('');
   const [nota, setNota] = useState('');
   const [showAgregarNumero, setShowAgregarNumero] = useState(false);
+  const [showTipificar, setShowTipificar] = useState(false);
   const [nuevoNumero, setNuevoNumero] = useState('');
   const [numerosExtra, setNumerosExtra] = useState<Record<string, string[]>>({});
   const lastCallRef = useRef(0);
@@ -96,10 +97,7 @@ export default function PowerDialerPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id_cliente: lead.id_cliente, pipeline_id: lead.pipeline_id, numero: ultimoNumero, resultado, notas: nota }),
       });
-      if (resultado === 'contactado') {
-        // Lead contactado, pasar al siguiente
-        if (current < leads.length - 1) setCurrent(current + 1);
-      }
+      if (resultado === 'contactado') { setShowTipificar(true); return; }
     } catch { /* */ }
     setShowResultado(false);
     setNota('');
@@ -113,6 +111,18 @@ export default function PowerDialerPage() {
     });
     if (current < leads.length - 1) setCurrent(current + 1);
     setShowResultado(false);
+  };
+
+  const tipificar = async (estado: string) => {
+    if (!lead) return;
+    await fetch('/api/pipeline/tipificar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: lead.pipeline_id, estado, notas: nota }),
+    });
+    setShowTipificar(false);
+    setNota('');
+    setShowResultado(false);
+    if (current < leads.length - 1) setCurrent(current + 1);
   };
 
   const agregarNumero = () => {
