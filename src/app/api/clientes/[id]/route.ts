@@ -35,21 +35,32 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   }
 }
 
-// PATCH — actualizar tipo_persona
+// PATCH — actualizar campos RGPD y tipo_persona
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { tipo_persona } = await req.json();
+  const body = await req.json();
 
-  if (!['natural', 'autonomo', 'empresa'].includes(tipo_persona)) {
+  if (body.tipo_persona && !['natural', 'autonomo', 'empresa'].includes(body.tipo_persona)) {
     return NextResponse.json({ error: 'Tipo inválido' }, { status: 400 });
   }
 
+  const updates: string[] = [];
+  const vals: any[] = [];
+  let pi = 1;
+
+  if (body.tipo_persona) { updates.push(`tipo_persona = $${pi++}`); vals.push(body.tipo_persona); }
+  if (body.whatsapp_numero !== undefined) { updates.push(`whatsapp_numero = $${pi++}`); vals.push(body.whatsapp_numero || null); }
+  if (body.whatsapp_opt_in !== undefined) { updates.push(`whatsapp_opt_in = $${pi++}`); vals.push(body.whatsapp_opt_in); if (body.whatsapp_opt_in) { updates.push(`whatsapp_opt_in_fecha = now()`); } }
+  if (body.alertas_fidelizacion !== undefined) { updates.push(`alertas_fidelizacion = $${pi++}`); vals.push(body.alertas_fidelizacion); }
+
+  if (!updates.length) return NextResponse.json({ error: 'Nada que actualizar' }, { status: 400 });
+
+  updates.push('updated_at = now()');
+  vals.push(id);
+
   try {
-    await pool.query(
-      `UPDATE clientes SET tipo_persona = $1, updated_at = now() WHERE id_cliente = $2`,
-      [tipo_persona, id]
-    );
-    return NextResponse.json({ success: true, tipo_persona });
+    await pool.query(`UPDATE clientes SET ${updates.join(', ')} WHERE id_cliente = $${pi}`, vals);
+    return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: 'Error' }, { status: 500 });
   }

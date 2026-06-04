@@ -18,6 +18,7 @@ type Cliente = {
   cima: string; tiene_renove: string; renove_variante: string;
   fecha: string; hora: string; estado: string;
   lineas: any[]; header: any; cima_global: boolean;
+  whatsapp_opt_in?: boolean; whatsapp_numero?: string; alertas_fidelizacion?: boolean;
 };
 
 const PAGE_SIZES = [10, 25, 50, 100];
