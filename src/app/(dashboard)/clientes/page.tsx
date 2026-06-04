@@ -349,6 +349,34 @@ export default function ClientesPage() {
                                   Reanalizar
                                 </button>
                               </div>
+
+                              {/* WhatsApp Consent */}
+                              <div className="bg-[#f8f7fa] rounded-lg p-3 space-y-2" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] text-[#7c757c]">Alertas de Fidelización</span>
+                                  <button onClick={async () => {
+                                    await fetch(`/api/clientes/${c.id_cliente}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alertas_fidelizacion: !c.alertas_fidelizacion }) });
+                                    fetchClientes();
+                                  }} className={`w-8 h-4 rounded-full transition-colors ${c.alertas_fidelizacion ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+                                    <div className={`w-3 h-3 bg-white rounded-full shadow transition-transform ${c.alertas_fidelizacion ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                                  </button>
+                                </div>
+                                {c.alertas_fidelizacion && (
+                                  <div className="flex items-center gap-2">
+                                    <input value={c.whatsapp_numero || ''}
+                                      onChange={async (e) => {
+                                        const v = e.target.value;
+                                        const clientesCopy = [...paged.map(x => x.id_cliente === c.id_cliente ? { ...x, whatsapp_numero: v } : x)];
+                                        await fetch(`/api/clientes/${c.id_cliente}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ whatsapp_numero: v }) });
+                                      }}
+                                      placeholder="+34 6XX XXX XXX" className="border border-[#e0e0f0] rounded-lg px-2 py-1 text-[10px] w-40"
+                                    />
+                                    <span className={`text-[10px] ${c.whatsapp_opt_in ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                      {c.whatsapp_opt_in ? '✅ Confirmado' : '⏳ Pendiente'}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
                             </div>
 
                             {/* Resumen */}
