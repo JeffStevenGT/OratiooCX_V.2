@@ -25,7 +25,7 @@ export async function GET(req: Request) {
       FROM clientes c
       JOIN clientes_proyectos cp ON c.id_cliente = cp.id_cliente
         AND cp.proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'orange')
-        AND cp.datos->>'estado' IN ('completado')
+        AND cp.datos->>'estado' IN ('completado', 'no_cliente')
       LEFT JOIN pipeline pl ON c.id_cliente = pl.id_cliente
         AND pl.proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'orange')
         AND pl.deleted_at IS NULL

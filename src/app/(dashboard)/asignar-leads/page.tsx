@@ -122,21 +122,25 @@ export default function AsignarLeadsPage() {
         </div>
       )}
 
-      {selected.size > 0 && (
-        <div className="card-sm bg-[#f0f4ff] border-[#c4d4f0] flex items-center gap-3 flex-wrap">
-          <UserPlus size={16} className="text-[#0a6ea9]" />
-          <span className="text-sm font-medium">{selected.size} seleccionados</span>
+      {tab === 'pendientes' && leads.length > 0 && (
+        <div className={`card-sm flex items-center gap-3 flex-wrap ${selected.size > 0 ? 'bg-[#f0f4ff] border-[#c4d4f0]' : 'bg-[#f8f7fa]'}`}>
+          <UserPlus size={16} className={selected.size > 0 ? 'text-[#0a6ea9]' : 'text-[#b8b0b8]'} />
+          <span className="text-sm font-medium">
+            {selected.size > 0 ? `${selected.size} seleccionados →` : 'Seleccioná leads para asignar'}
+          </span>
           <Globe size={12} className="text-[#7c757c]" />
           <select value={equipo} onChange={e => setEquipo(e.target.value)} className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white">
-            <option value="">Todos</option>
+            <option value="">Todos los equipos</option>
             {equipos.map(eq => <option key={eq} value={eq}>{eq}</option>)}
           </select>
-          <select value={asesorId} onChange={e => setAsesorId(e.target.value)} className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white min-w-[180px]">
+          <select value={asesorId} onChange={e => setAsesorId(e.target.value)} className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white min-w-[200px]">
             <option value="">Elegir asesor...</option>
-            {asesores.map(a => <option key={a.id} value={a.id}>{a.nombre} ({a.equipo})</option>)}
+            {asesores.map(a => <option key={a.id} value={a.id}>{a.nombre} ({a.equipo || '—'})</option>)}
           </select>
-          <button onClick={asignar} disabled={!asesorId || asignando} className="btn-primary flex items-center gap-1.5 text-xs px-4 py-1.5 disabled:opacity-40">
-            {asignando ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Asignar
+          <button onClick={asignar} disabled={!asesorId || selected.size === 0 || asignando}
+            className="btn-primary flex items-center gap-1.5 text-xs px-4 py-1.5 disabled:opacity-40">
+            {asignando ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+            {selected.size > 0 ? `Asignar ${selected.size} leads` : 'Asignar'}
           </button>
           {resultado && <span className="text-xs text-emerald-600 flex items-center gap-1"><CheckCircle2 size={12} /> {resultado}</span>}
         </div>
