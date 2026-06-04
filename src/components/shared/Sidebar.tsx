@@ -23,13 +23,13 @@ type MenuItem = { to: string; icon: any; label: string; roles: string[]; proyect
 
 const MENU_ITEMS: { label: string; items: MenuItem[] }[] = [
   {
-    label: 'Principal',
+    label: 'Dashboard',
     items: [
-      { to: '/jefe', icon: LayoutDashboard, label: 'Dashboard General', roles: ['jefe_area', 'desarrollador', 'it'] },
-      { to: '/asesor', icon: LayoutDashboard, label: 'Dashboard Asesor', roles: ['asesor'] },
-      { to: '/supervisor', icon: LayoutDashboard, label: 'Dashboard Supervisor', roles: ['supervisor'] },
-      { to: '/backoffice', icon: LayoutDashboard, label: 'Dashboard BO', roles: ['back_office'] },
-      { to: '/admin', icon: LayoutDashboard, label: 'Dashboard Admin', roles: ['it', 'desarrollador'] },
+      { to: '/jefe', icon: LayoutDashboard, label: 'General', roles: ['jefe_area', 'desarrollador', 'it'] },
+      { to: '/asesor', icon: LayoutDashboard, label: 'Asesor', roles: ['asesor'] },
+      { to: '/supervisor', icon: LayoutDashboard, label: 'Supervisor', roles: ['supervisor'] },
+      { to: '/backoffice', icon: LayoutDashboard, label: 'BO', roles: ['back_office'] },
+      { to: '/admin', icon: LayoutDashboard, label: 'Admin', roles: ['it', 'desarrollador'] },
     ],
   },
   {
@@ -71,7 +71,7 @@ const MENU_ITEMS: { label: string; items: MenuItem[] }[] = [
 export default function Sidebar({ userName, userRole, userId }: SidebarProps) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const [openSections, setOpenSections] = useState<Set<string>>(new Set(['Principal']));
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set(['Dashboard']));
   const { proyecto } = useProject();
 
   const isActive = (to: string) => pathname === to;
