@@ -70,7 +70,9 @@ export async function GET(req: Request) {
     if (renove === 'true') result = result.filter((l: any) => l.tiene_renove);
     else if (renove === 'false') result = result.filter((l: any) => !l.tiene_renove);
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, {
+      headers: { 'Cache-Control': 'no-store' },
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
