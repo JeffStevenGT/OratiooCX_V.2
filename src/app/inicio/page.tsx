@@ -43,7 +43,6 @@ export default function InicioPage() {
       {/* Logo Oratioo */}
       <div className={`transition-all duration-700 ${ready ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
         <OratiooLogo className="w-36 h-10 mx-auto mb-6" color="white" />
-        <h1 className="text-2xl font-bold text-white text-center mb-1">Oratioo CX</h1>
         <p className="text-sm text-white/50 text-center mb-12">Seleccioná un proyecto</p>
       </div>
 
