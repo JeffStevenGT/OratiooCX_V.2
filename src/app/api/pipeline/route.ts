@@ -18,7 +18,7 @@ export async function GET(req: Request) {
 
     let query = `
       SELECT c.id_cliente, c.numero_documento as dni,
-             COALESCE(NULLIF(c.nombre_razon_social, ''), cp.datos->'header'->>'nombre', 'Sin nombre') as nombre,
+             COALESCE(NULLIF(c.nombre_razon_social, ''), cp.datos->'header'->>'nombre', '—') as nombre,
              CASE WHEN (cp.datos->>'cima_global')::boolean THEN 'SI' ELSE 'NO' END as cima,
              cp.datos,
              cp.ultima_extraccion
