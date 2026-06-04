@@ -179,7 +179,7 @@ export default function AsignarLeadsPage() {
                   <td className="py-2.5 px-3 text-xs font-mono font-medium">{l.dni}</td>
                   <td className="py-2.5 px-3 text-xs max-w-[200px] truncate">{l.nombre || '—'}</td>
                   {tab === 'pendientes' ? (
-                    <><td className="py-2.5 px-3 text-center"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${l.cima === 'true' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{l.cima === 'true' ? 'SI' : 'NO'}</span></td>
+                    <><td className="py-2.5 px-3 text-center"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${l.cima === 'SI' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{l.cima}</span></td>
                     <td className="py-2.5 px-3 text-center"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${l.tiene_renove ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>{l.tiene_renove ? 'SI' : 'NO'}</span></td>
                     <td className="py-2.5 px-3 text-center text-xs">{l.lineas_count}</td></>
                   ) : (
