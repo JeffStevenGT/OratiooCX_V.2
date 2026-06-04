@@ -78,36 +78,44 @@ export async function GET(req: Request) {
   }
 }
 
-// POST — asignar leads
+// POST — asignar leads (round-robin si múltiples asesores)
 export async function POST(req: Request) {
   try {
     await requireRole('jefe_area', 'supervisor', 'desarrollador');
-    const { leads, asesor_id } = await req.json();
-    if (!leads?.length || !asesor_id) {
-      return NextResponse.json({ error: 'Faltan leads o asesor_id' }, { status: 400 });
+    const { leads, asesor_id, asesores } = await req.json();
+    const ids = Array.isArray(leads) ? leads : [leads];
+    if (!ids.length) return NextResponse.json({ error: 'Faltan leads' }, { status: 400 });
+
+    // Si hay múltiples asesores, round-robin
+    let asignaciones: { id_cliente: string; asesor_id: number }[] = [];
+    
+    if (asesores && Array.isArray(asesores) && asesores.length > 0) {
+      ids.forEach((id_cliente, i) => {
+        asignaciones.push({ id_cliente, asesor_id: asesores[i % asesores.length] });
+      });
+    } else if (asesor_id) {
+      ids.forEach(id_cliente => asignaciones.push({ id_cliente, asesor_id }));
+    } else {
+      return NextResponse.json({ error: 'Falta asesor_id o asesores' }, { status: 400 });
     }
 
-    const proyectoId = 1; // orange
-    const ids = Array.isArray(leads) ? leads : [leads];
-
-    for (const id_cliente of ids) {
+    const proyectoId = 1;
+    for (const a of asignaciones) {
       await pool.query(
         `INSERT INTO pipeline (id_cliente, proyecto_id, asesor_id, estado, ultimo_cambio)
          VALUES ($1, $2, $3, 'pendiente', now())
          ON CONFLICT (id_cliente, proyecto_id, asesor_id) WHERE deleted_at IS NULL
          DO NOTHING`,
-        [id_cliente, proyectoId, asesor_id]
+        [a.id_cliente, proyectoId, a.asesor_id]
       );
-
-      // Historial
       await pool.query(
         `INSERT INTO historial (id_cliente, tipo, proyecto_id, asesor_id, descripcion)
          VALUES ($1, 'asignacion', $2, $3, 'Lead asignado a asesor')`,
-        [id_cliente, proyectoId, asesor_id]
+        [a.id_cliente, proyectoId, a.asesor_id]
       );
     }
 
-    return NextResponse.json({ success: true, count: ids.length });
+    return NextResponse.json({ success: true, count: ids.length, distribucion: asignaciones.length });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

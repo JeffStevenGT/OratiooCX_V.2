@@ -9,7 +9,7 @@ import { Users, Send, Loader2, CheckCircle2, Filter, UserPlus, Globe, RotateCcw 
 
 type Lead = { id_cliente: string; dni: string; nombre: string; cima: string; tiene_renove: boolean; renove_variante: string; lineas_count: number };
 type Liberado = { id_cliente: string; dni: string; nombre: string; asesor_anterior: string; liberado_at: string };
-type Asesor = { id: number; nombre: string; equipo: string };
+type Asesor = { id: number; nombre: string; equipo: string; rol?: string };
 
 export default function AsignarLeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -20,6 +20,7 @@ export default function AsignarLeadsPage() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [asesorId, setAsesorId] = useState('');
+  const [asesoresIds, setAsesoresIds] = useState<number[]>([]);
   const [asignando, setAsignando] = useState(false);
   const [resultado, setResultado] = useState('');
   const [cimaFilter, setCimaFilter] = useState('');
@@ -51,7 +52,7 @@ export default function AsignarLeadsPage() {
   };
 
   useEffect(() => { fetchData(); }, [cimaFilter, renoveFilter, fechaFilter]);
-  useEffect(() => { fetchAsesores(equipo); setAsesorId(''); }, [equipo]);
+  useEffect(() => { fetchAsesores(equipo); setAsesorId(''); setAsesoresIds([]); }, [equipo]);
 
   const toggleAll = () => {
     const items = tab === 'pendientes' ? leads : liberados;
@@ -66,16 +67,22 @@ export default function AsignarLeadsPage() {
   };
 
   const asignar = async () => {
-    if (!asesorId || selected.size === 0) return;
+    if (selected.size === 0) return;
+    if (!asesorId && asesoresIds.length === 0) return;
     setAsignando(true);
     try {
+      const body: any = { leads: [...selected] };
+      if (asesoresIds.length > 0) body.asesores = asesoresIds;
+      else body.asesor_id = parseInt(asesorId);
+      
       const res = await fetch('/api/pipeline', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leads: [...selected], asesor_id: parseInt(asesorId) }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
-        setResultado(`${selected.size} leads asignados`);
-        setSelected(new Set());
+        const n = asesoresIds.length > 0 ? asesoresIds.length : 1;
+        setResultado(`${selected.size} leads repartidos entre ${n} asesor(es)`);
+        setSelected(new Set()); setAsesoresIds([]);
         fetchData();
       }
     } catch { setResultado('Error'); }
@@ -133,11 +140,18 @@ export default function AsignarLeadsPage() {
             <option value="">Todos los equipos</option>
             {equipos.map(eq => <option key={eq} value={eq}>{eq}</option>)}
           </select>
-          <select value={asesorId} onChange={e => setAsesorId(e.target.value)} className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white min-w-[200px]">
-            <option value="">Elegir asesor...</option>
+          <select value={asesorId} onChange={e => { setAsesorId(e.target.value); setAsesoresIds([]); }} className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white min-w-[200px]">
+            <option value="">Elegir un asesor...</option>
             {asesores.map(a => <option key={a.id} value={a.id}>{a.nombre} ({a.equipo || '—'})</option>)}
           </select>
-          <button onClick={asignar} disabled={!asesorId || selected.size === 0 || asignando}
+          <span className="text-xs text-[#7c757c]">o</span>
+          <button onClick={() => { setAsesorId(''); setAsesoresIds(asesores.filter(a => a.rol === 'asesor' || !a.rol).map(a => a.id)); }}
+            className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
+              asesoresIds.length > 0 ? 'bg-[#0a6ea9] text-white border-[#0a6ea9]' : 'border-[#e0e0f0] text-[#7c757c] hover:border-[#0a6ea9]'
+            }`}>
+            Repartir entre todos{asesoresIds.length > 0 ? ` (${asesoresIds.length})` : ''}
+          </button>
+          <button onClick={asignar} disabled={(!asesorId && asesoresIds.length === 0) || selected.size === 0 || asignando}
             className="btn-primary flex items-center gap-1.5 text-xs px-4 py-1.5 disabled:opacity-40">
             {asignando ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
             {selected.size > 0 ? `Asignar ${selected.size} leads` : 'Asignar'}
@@ -163,8 +177,7 @@ export default function AsignarLeadsPage() {
                 <th className="table-header px-3 py-2.5 text-left">Nombre</th>
                 {tab === 'pendientes' ? (
                   <><th className="table-header px-3 py-2.5 text-center">CIMA</th>
-                  <th className="table-header px-3 py-2.5 text-center">Renove</th>
-                  <th className="table-header px-3 py-2.5 text-center">Líneas</th></>
+                  <th className="table-header px-3 py-2.5 text-center">Renove</th></>
                 ) : (
                   <th className="table-header px-3 py-2.5 text-left">Asesor anterior</th>
                 )}
@@ -181,7 +194,7 @@ export default function AsignarLeadsPage() {
                   {tab === 'pendientes' ? (
                     <><td className="py-2.5 px-3 text-center"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${l.cima === 'SI' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{l.cima}</span></td>
                     <td className="py-2.5 px-3 text-center"><span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${l.tiene_renove ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>{l.tiene_renove ? 'SI' : 'NO'}</span></td>
-                    <td className="py-2.5 px-3 text-center text-xs">{l.lineas_count}</td></>
+                  </>
                   ) : (
                     <td className="py-2.5 px-3 text-xs">{l.asesor_anterior}</td>
                   )}
