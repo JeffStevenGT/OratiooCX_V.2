@@ -343,6 +343,10 @@ export default function ClientesPage() {
                                     <TipoBadge tipo={c.tipo_persona} />
                                   </button>
                                 )}
+                                <button onClick={(e) => { e.stopPropagation(); fetch(`/api/clientes/reanalizar`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id_cliente: c.id_cliente }) }).then(() => { setExpandido(null); fetchClientes(); }); }}
+                                  className="text-[10px] text-[#0a6ea9] hover:underline ml-2" title="Volver a analizar con el bot">
+                                  Reanalizar
+                                </button>
                               </div>
                             </div>
 
