@@ -18,9 +18,8 @@ export async function GET(req: Request) {
 
     let query = `
       SELECT c.id_cliente, c.numero_documento as dni,
-             c.nombre_razon_social as nombre, c.tipo_persona,
-             cp.datos->>'cima_global' as cima,
-             cp.datos->'header'->>'paquete' as paquete,
+             COALESCE(NULLIF(c.nombre_razon_social, ''), cp.datos->'header'->>'nombre', 'Sin nombre') as nombre,
+             CASE WHEN (cp.datos->>'cima_global')::boolean THEN 'SI' ELSE 'NO' END as cima,
              cp.ultima_extraccion
       FROM clientes c
       JOIN clientes_proyectos cp ON c.id_cliente = cp.id_cliente
