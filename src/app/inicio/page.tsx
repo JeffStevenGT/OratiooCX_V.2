@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, ArrowRight } from 'lucide-react';
 import { useProject } from '@/lib/project-context';
+import OratiooLogo from '@/components/shared/OratiooLogo';
 
 type ProyectoCard = { id: number; nombre: string; nombre_visible: string };
 
@@ -41,9 +42,7 @@ export default function InicioPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#481163] to-[#2d0a40] p-8">
       {/* Logo Oratioo */}
       <div className={`transition-all duration-700 ${ready ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-        <div className="w-20 h-20 bg-white/15 backdrop-blur rounded-2xl flex items-center justify-center mb-6 mx-auto">
-          <span className="text-white text-3xl font-bold">O</span>
-        </div>
+        <OratiooLogo className="w-36 h-10 mx-auto mb-6" color="white" />
         <h1 className="text-2xl font-bold text-white text-center mb-1">Oratioo CX</h1>
         <p className="text-sm text-white/50 text-center mb-12">Seleccioná un proyecto</p>
       </div>
