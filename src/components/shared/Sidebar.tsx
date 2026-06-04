@@ -15,7 +15,7 @@ import {
   AlertTriangle, Target, UserPlus, ChevronDown, ChevronRight,
 } from 'lucide-react';
 import NotificationBadge from './NotificationBadge';
-import ProjectSelector from './ProjectSelector';
+import OratiooLogo from './OratiooLogo';
 
 interface SidebarProps { userName: string; userRole: string; userId?: string; }
 
@@ -85,21 +85,19 @@ export default function Sidebar({ userName, userRole, userId }: SidebarProps) {
 
   return (
     <aside className={`${collapsed ? 'w-16' : 'w-56'} bg-[#481163] border-r border-[#5d1a7a] flex flex-col transition-all duration-300 h-screen sticky top-0`}>
-      <div className="flex items-center gap-3 h-14 px-4 border-b border-[#5d1a7a]">
-        {!collapsed && (
+      <div className="flex flex-col items-center gap-2 px-4 py-4 border-b border-[#5d1a7a]">
+        {!collapsed ? (
           <>
-            <div className="w-7 h-7 rounded-md bg-[#0a6ea9] flex items-center justify-center text-white text-xs font-bold">O</div>
-            <span className="text-sm font-bold text-white">Oratioo CX</span>
-            <NotificationBadge userId={userId} userRole={userRole} />
+            <OratiooLogo className="w-28 h-6" color="white" />
+            <div className="flex items-center gap-2 w-full">
+              <span className="text-xs text-[#a8a0b8] truncate flex-1">{userName}</span>
+              <NotificationBadge userId={userId} userRole={userRole} />
+            </div>
           </>
+        ) : (
+          <div className="w-7 h-7 rounded-md bg-[#0a6ea9] flex items-center justify-center text-white text-xs font-bold">O</div>
         )}
       </div>
-
-      {!collapsed && (
-        <div className="px-3 py-2 border-b border-[#5d1a7a]">
-          <ProjectSelector />
-        </div>
-      )}
 
       <button onClick={() => setCollapsed(!collapsed)}
         className="flex items-center justify-center h-8 mx-2 my-2 rounded text-[#a8a0b8] hover:bg-[#5d1a7a]/50 hover:text-white transition-colors text-xs">
