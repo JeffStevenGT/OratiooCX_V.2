@@ -1,0 +1,26 @@
+# Dependencias
+node_modules/
+__pycache__/
+*.pyc
+
+# Build output
+.next/
+dist/
+.tsbuildinfo
+*.map
+
+# Entornos virtuales
+venv/
+
+# Archivos de datos / logs (no son código)
+numeros.txt
+proxies.txt
+piloto_logs.txt
+piloto_logs_w*.txt
+
+# Envs (sensibles)
+.env
+.env.local
+
+# Scripts temporales
+fix*.py

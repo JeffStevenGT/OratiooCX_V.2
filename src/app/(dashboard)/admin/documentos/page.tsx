@@ -7,6 +7,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Upload, FileText, Loader2, CheckCircle2, AlertTriangle, Table2, Clock, List, RefreshCw } from 'lucide-react';
 
+const PAGE_SIZES = [10, 25, 50, 100];
+
 type ColaDni = { id_cliente: string; estado: string; ultima_extraccion: string | null; updated_at: string | null };
 type ColaResumen = Record<string, number>;
 
@@ -14,9 +16,11 @@ export default function DocumentosPage() {
   const [file, setFile] = useState<File | null>(null);
   const [dnis, setDnis] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [result, setResult] = useState<{ status: string; text: string } | null>(null);
+  const [result, setResult] = useState<{ status: string; text: string; detalle?: any } | null>(null);
   const [cola, setCola] = useState<{ resumen: ColaResumen; dnis: ColaDni[] } | null>(null);
   const [loadingCola, setLoadingCola] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const isExcel = (name: string) => name.endsWith('.xlsx') || name.endsWith('.xls');
 
@@ -80,6 +84,7 @@ export default function DocumentosPage() {
   }, []);
 
   useEffect(() => { fetchCola(); }, [fetchCola]);
+  useEffect(() => { setPage(1); }, []);
 
   const handleUpload = async () => {
     if (!file || dnis.length === 0) return;
@@ -96,7 +101,11 @@ export default function DocumentosPage() {
 
       if (!res.ok) throw new Error(data.error || 'Error');
 
-      setResult({ status: 'ok', text: `${data.count || dnis.length} DNIs cargados correctamente.` });
+      setResult({
+        status: 'ok',
+        text: data.resumen || `${data.count || dnis.length} DNIs cargados.`,
+        detalle: data,
+      });
       setFile(null);
       setDnis([]);
       fetchCola(); // refrescar cola
@@ -112,7 +121,7 @@ export default function DocumentosPage() {
       <div>
         <h1 className="text-xl font-bold text-[#1a1030]">Subida de Documentos</h1>
         <p className="text-sm text-[#7c757c] mt-1">
-          Carga un archivo con DNIs para que el bot los procese automáticamente.
+          Carga un archivo con DNIs para que la app los procese automáticamente.
         </p>
       </div>
 
@@ -199,15 +208,31 @@ export default function DocumentosPage() {
 
           {/* Result */}
           {result && (
-            <div
-              className={`mb-3 px-3 py-2 rounded-lg text-xs flex items-center gap-2 border ${
-                result.status === 'ok'
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-red-50 text-red-700 border-red-200'
-              }`}
-            >
-              {result.status === 'ok' ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
-              {result.text}
+            <div className={`mb-3 px-3 py-2 rounded-lg text-xs border ${
+              result.status === 'ok'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-red-50 text-red-700 border-red-200'
+            }`}>
+              <div className="flex items-center gap-2">
+                {result.status === 'ok' ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
+                <span className="font-medium">{result.text}</span>
+              </div>
+              {result.detalle && (
+                <div className="grid grid-cols-3 gap-2 mt-2 text-center">
+                  <div className="bg-white/50 rounded p-1.5">
+                    <p className="text-lg font-bold">{result.detalle.nuevos || 0}</p>
+                    <p className="text-[9px]">Nuevos</p>
+                  </div>
+                  <div className="bg-white/50 rounded p-1.5">
+                    <p className="text-lg font-bold">{result.detalle.reabiertos || 0}</p>
+                    <p className="text-[9px]">Reabiertos</p>
+                  </div>
+                  <div className="bg-white/50 rounded p-1.5">
+                    <p className="text-lg font-bold">{result.detalle.ignorados || 0}</p>
+                    <p className="text-[9px]">Ignorados</p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -254,42 +279,70 @@ export default function DocumentosPage() {
             </div>
 
             {/* Tabla */}
-            {cola.dnis.length > 0 ? (
-              <div className="overflow-x-auto max-h-64 overflow-y-auto">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-white">
-                    <tr className="border-b border-[#e8dce6]">
-                      <th className="table-header px-3 py-2 text-left">DNI</th>
-                      <th className="table-header px-3 py-2 text-left">Estado</th>
-                      <th className="table-header px-3 py-2 text-left">Última actualización</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cola.dnis.map((d) => (
-                      <tr key={d.id_cliente} className="border-b border-[#f0f0f8] hover:bg-[#f8f7fa]">
-                        <td className="py-2 px-3 font-mono">{d.id_cliente}</td>
-                        <td className="py-2 px-3">
-                          <EstadoBadge estado={d.estado || 'pendiente'} />
-                        </td>
-                        <td className="py-2 px-3 text-[#7c757c]">
-                          {d.updated_at ? new Date(d.updated_at).toLocaleString('es-PE') : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="text-xs text-[#7c757c] text-center py-6">
-                No hay DNIs cargados. Sube un archivo para empezar.
-              </p>
-            )}
+            {(() => {
+              const totalPages = Math.ceil(cola.dnis.length / pageSize);
+              const paged = cola.dnis.slice((page - 1) * pageSize, page * pageSize);
+              return cola.dnis.length > 0 ? (
+                <>
+                  <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-white">
+                        <tr className="border-b border-[#e8dce6]">
+                          <th className="table-header px-3 py-2 text-left">DNI</th>
+                          <th className="table-header px-3 py-2 text-left">Estado</th>
+                          <th className="table-header px-3 py-2 text-left">Última actualización</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paged.map((d) => (
+                          <tr key={d.id_cliente} className="border-b border-[#f0f0f8] hover:bg-[#f8f7fa]">
+                            <td className="py-2 px-3 font-mono">{d.id_cliente}</td>
+                            <td className="py-2 px-3">
+                              <EstadoBadge estado={d.estado || 'pendiente'} />
+                            </td>
+                            <td className="py-2 px-3 text-[#7c757c]">
+                              {d.updated_at ? new Date(d.updated_at).toLocaleString('es-PE') : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-4 py-2 border-t border-[#e8dce6]">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-[#7c757c]">Mostrar</span>
+                        <select value={pageSize} onChange={e => { setPageSize(+e.target.value); setPage(1); }}
+                          className="border border-[#e0e0f0] rounded-lg px-2 py-1 text-xs bg-white">
+                          {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <span className="text-xs text-[#7c757c]">de {cola.dnis.length}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                          className="btn-outline text-xs px-3 py-1 disabled:opacity-30">Anterior</button>
+                        <span className="text-xs text-[#7c757c] px-2">{page} / {totalPages}</span>
+                        <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                          className="btn-outline text-xs px-3 py-1 disabled:opacity-30">Siguiente</button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : null;
+            })()}
           </>
         ) : (
           <div className="flex items-center justify-center py-8">
             <Loader2 size={20} className="animate-spin text-[#b8b0b8]" />
           </div>
         )}
+      </div>
+      {/* ── Info ── */}
+      <div className="mt-8 card-sm bg-[#f8f7fa] dark:bg-[#1e1a2a] border-dashed border-[#e0e0f0] dark:border-[#2a1f3a]">
+        <h3 className="text-xs font-semibold text-[#7c757c] uppercase tracking-wider mb-2">💡 ¿Cómo funciona?</h3>
+        <ul className="space-y-1 text-[11px] text-[#7c757c]">
+          <li>· Sube archivos Excel con DNIs para encolar. El bot los procesará automáticamente. Monitorea el progreso de la cola.</li>
+        </ul>
       </div>
     </div>
   );

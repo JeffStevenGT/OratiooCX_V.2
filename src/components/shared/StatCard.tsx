@@ -6,6 +6,7 @@
  */
 
 import { LucideIcon } from 'lucide-react';
+import FlipCard from './FlipCard';
 
 interface StatCardProps {
   icon: LucideIcon;
@@ -14,6 +15,7 @@ interface StatCardProps {
   variant?: 'default' | 'success' | 'warning' | 'danger' | 'info' | 'purple';
   size?: 'sm' | 'md' | 'lg';
   className?: string;
+  description?: string; // Si se provee, la card es flipeable
 }
 
 const variants = {
@@ -41,10 +43,11 @@ export default function StatCard({
   variant = 'default',
   size = 'md',
   className = '',
+  description,
 }: StatCardProps) {
   const valueSize = size === 'lg' ? 'text-3xl' : size === 'sm' ? 'text-lg' : 'text-2xl';
 
-  return (
+  const card = (
     <div
       className={`rounded-xl border p-4 transition-all hover:shadow-sm ${variants[variant]} ${className}`}
     >
@@ -63,4 +66,10 @@ export default function StatCard({
       </div>
     </div>
   );
+
+  if (description) {
+    return <FlipCard back={description}>{card}</FlipCard>;
+  }
+
+  return card;
 }

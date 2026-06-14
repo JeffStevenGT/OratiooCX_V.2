@@ -6,6 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { Target, TrendingUp, Loader2, Award } from 'lucide-react';
+import Skeleton, { TableSkeleton, PageSkeleton } from '@/components/shared/Skeleton';
 
 type Meta = { id: number; nombre: string; equipo: string; pendientes: number; contactados: number; ventas: number; tasa: number };
 
@@ -43,17 +44,17 @@ export default function MetasPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-xl font-bold text-[#1a1030]">Metas</h1>
-        <p className="text-sm text-[#7c757c] mt-0.5">Rendimiento del equipo</p>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white">Metas</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Rendimiento del equipo</p>
       </div>
 
       <div className="card !p-0 overflow-hidden">
         {loading ? (
-          <div className="flex justify-center py-16"><Loader2 size={28} className="animate-spin text-[#0a6ea9]" /></div>
+          <TableSkeleton rows={10} cols={5} />
         ) : (
           <table className="w-full">
             <thead>
-              <tr className="border-b border-[#e8dce6] bg-[#f8f7fa]">
+              <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                 <th className="table-header px-4 py-2.5 text-left">#</th>
                 <th className="table-header px-4 py-2.5 text-left">Asesor</th>
                 <th className="table-header px-4 py-2.5 text-left">Equipo</th>
@@ -64,12 +65,12 @@ export default function MetasPage() {
             </thead>
             <tbody>
               {asesores.map((a, i) => (
-                <tr key={a.id} className={`border-b border-[#f0f0f8] hover:bg-[#f8f7fa] ${i < 3 ? 'bg-[#fffdf0]' : ''}`}>
+                <tr key={a.id} className={`border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:bg-gray-800 ${i < 3 ? 'bg-[#fffdf0]' : ''}`}>
                   <td className="py-2.5 px-4">
                     {i === 0 ? <Award size={16} className="text-amber-500" /> :
                      i === 1 ? <Award size={16} className="text-gray-400" /> :
                      i === 2 ? <Award size={16} className="text-amber-700" /> :
-                     <span className="text-xs text-[#7c757c]">{i + 1}</span>}
+                     <span className="text-xs text-gray-500 dark:text-gray-400">{i + 1}</span>}
                   </td>
                   <td className="py-2.5 px-4 text-xs font-medium">{a.nombre}</td>
                   <td className="py-2.5 px-4 text-xs">{a.equipo}</td>

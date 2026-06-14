@@ -28,7 +28,7 @@ from login import (
     abrir_nuevo_acto_comercial, manejar_cookies_flexible
 )
 
-load_dotenv()
+load_dotenv(Path(__file__).parent.parent / '.env')
 
 ORANGE_URL = "https://pangea.orange.es/"
 BACKEND_URL = os.getenv("BOT_API_URL", "http://localhost:3000")
@@ -115,8 +115,24 @@ def sync_result(id_cliente, datos, estado="completado"):
 # EXTRACCIÓN
 # ═══════════════════════════════════════════
 def parse_estado_linea(texto):
+    # Detecta estados activos (con color no-gris) desde el DOM
     return {"hotline":"Hotline" in texto, "suspendida":"Suspendida" in texto,
             "impago":"Impago" in texto, "fraude":"Fraude" in texto}
+
+def estado_detallado_a_legado(estados: list) -> dict:
+    """Convierte el formato de login.py [{texto,color,activo}] al formato legacy
+    que espera el frontend {hotline:bool, suspendida:bool, ...}"""
+    result = {"hotline": False, "suspendida": False, "impago": False, "fraude": False}
+    if not estados:
+        return result
+    for e in estados:
+        txt = e.get("texto", "").lower()
+        activo = e.get("activo", False)
+        if "hotline" in txt: result["hotline"] = activo
+        if "suspendida" in txt: result["suspendida"] = activo
+        if "impago" in txt: result["impago"] = activo
+        if "fraude" in txt: result["fraude"] = activo
+    return result
 
 def extraer_campo(texto, patron):
     m = re.search(patron, texto)
@@ -137,18 +153,33 @@ def extraer_datos_estructurados(page, dni):
         linea = {"numero": lb.get("Linea","N/A"), "etiquetas": lb.get("etiquetas",[]),
                  "es_cima": lb.get("es_cima",False), "tiene_renove": lb.get("tiene_renove_mixto",False),
                  "variante_renove": lb.get("variante_renove","N/A"), "tiene_tv": lb.get("tiene_tv",False),
-                 "es_principal": lb.get("es_principal",False), "activo_desde": lb.get("activo_desde","N/A")}
+                 "es_principal": lb.get("es_principal",False), "activo_desde": lb.get("activo_desde","N/A"),
+                 # NUEVOS CAMPOS desde login.py
+                 "producto": lb.get("producto", "N/A"),
+                 "estado_detallado": lb.get("estado_linea", []),
+                 "permanencia": lb.get("permanencia", "N/A"),
+                 "consumo": lb.get("consumo", "N/A"),
+                 "venta_plazos": lb.get("venta_plazos", "N/A"),
+                 "vap": lb.get("venta_plazos", "N/A"),  # alias para frontend legacy
+                 "campanas_extra": lb.get("campanas_extra", []),
+        }
+        # Fallback: extracción directa del DOM si login.py no capturó o para compatibilidad
         try:
             bloque = page.locator(f".client-tariff-flex:has-text('{linea['numero']}')")
             if bloque.count()>0:
                 b=bloque.first
-                try: linea["estado"]=parse_estado_linea(b.locator("ocs-line-status").inner_text().strip())
-                except: pass
+                # Usar login.py para estado si está disponible (tiene info de color)
+                if not linea.get("estado_detallado"):
+                    try: linea["estado"]=parse_estado_linea(b.locator("ocs-line-status").inner_text().strip())
+                    except: pass
+                else:
+                    linea["estado"]=estado_detallado_a_legado(linea["estado_detallado"])
+                # Detalles (consumo, permanencia, VAP) como fallback
                 try:
                     d=b.locator("ocs-line-details").inner_text().strip()
-                    linea["consumo"]=extraer_campo(d,r'Consumo\s+([^\n]+)')
-                    linea["permanencia"]=extraer_campo(d,r'Permanencia\s+([^\n]+)')
-                    linea["vap"]=extraer_campo(d,r'Venta a Plazos\s*\n?\s*([^\n]+)')
+                    if linea.get("consumo","N/A")=="N/A": linea["consumo"]=extraer_campo(d,r'Consumo\s+([^\n]+)')
+                    if linea.get("permanencia","N/A")=="N/A": linea["permanencia"]=extraer_campo(d,r'Permanencia\s+([^\n]+)')
+                    if not linea.get("vap"): linea["vap"]=extraer_campo(d,r'Venta a Plazos\s*\n?\s*([^\n]+)')
                 except: pass
         except: pass
         lineas_detalladas.append(linea)
@@ -159,15 +190,16 @@ def extraer_datos_estructurados(page, dni):
 # ═══════════════════════════════════════════
 # LOGIN
 # ═══════════════════════════════════════════
-def login_loop(page, dni_touch: str = None):
-    for intento in range(999):
+def login_loop(page, cred_user='', cred_pass='', dni_touch: str = None):
+    max_reintentos = 10
+    for intento in range(max_reintentos):
         # Mantener vivo el DNI mientras reintentamos login
         if dni_touch:
             touch_dni(dni_touch)
         try:
             page.goto(ORANGE_URL, timeout=90000)
             manejar_cookies_flexible(page)
-            realizar_login(page)
+            realizar_login(page, cred_user, cred_pass)
             seleccionar_marca_orange(page)
             abrir_nuevo_acto_comercial(page)
             print(f"[LOGIN] OK (intento {intento+1})")
@@ -215,6 +247,16 @@ def main():
         idx = sys.argv.index("--worker-id")
         worker_id = int(sys.argv[idx + 1])
 
+    # Credenciales Pangea (desde coordinator o .env)
+    cred_user = os.getenv("ORANGE_USER", "")
+    cred_pass = os.getenv("ORANGE_PASS", "")
+    if "--credential-user" in sys.argv:
+        idx = sys.argv.index("--credential-user")
+        cred_user = sys.argv[idx + 1]
+    if "--credential-pass" in sys.argv:
+        idx = sys.argv.index("--credential-pass")
+        cred_pass = sys.argv[idx + 1]
+
     # Nombre de máquina (para filtrar comandos)
     machine_name = "localhost"
     if "--machine" in sys.argv:
@@ -251,10 +293,10 @@ def main():
     except: pass
 
     # Login
-    if not login_loop(page):
+    if not login_loop(page, cred_user, cred_pass):
         browser.close(); pw.stop(); return
 
-    procesados = no_clientes = errores = 0
+    procesados = no_clientes = errores = sin_trabajo = 0
     detenido = False
 
     while not detenido:
@@ -276,8 +318,31 @@ def main():
         # Siguiente DNI
         dni_data = next_dni()
         if not dni_data:
+            # Sin DNIs pendientes: esperar con backoff progresivo
+            # Si pasan 60s sin trabajo, cerrar navegador y esperar 5 min
+            sin_trabajo += 1
+            if sin_trabajo >= 12:  # 12 * 5s = 60s sin trabajo
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Sin DNIs pendientes. Cerrando sesion...")
+                sin_trabajo = 0
+                try:
+                    page.close()
+                    context.close()
+                    browser.close()
+                    pw.stop()
+                except:
+                    pass
+                time.sleep(300)  # 5 min de espera
+                # Reconectar
+                pw = sync_playwright().start()
+                browser, context = crear_contexto_espana(pw, proxy_config=proxy_conf)
+                page = context.new_page()
+                if not login_loop(page, cred_user, cred_pass):
+                    detenido = True
+                    break
+                continue
             time.sleep(5)
             continue
+        sin_trabajo = 0  # reset contador
 
         # Extraer dni (puede venir como "DNI_12345678A" o "12345678A")
         dni = dni_data.split("_")[-1] if "_" in dni_data else dni_data
@@ -319,7 +384,7 @@ def main():
             errores += 1
             try:
                 page.reload(timeout=30000)
-                login_loop(page, dni_touch=id_cliente)
+                login_loop(page, cred_user, cred_pass, dni_touch=id_cliente)
             except:
                 pass
 
@@ -328,7 +393,7 @@ def main():
             errores += 1
             try:
                 page.reload(timeout=30000)
-                login_loop(page, dni_touch=id_cliente)
+                login_loop(page, cred_user, cred_pass, dni_touch=id_cliente)
             except:
                 print("  -> [FATAL] No se pudo recuperar")
                 detenido = True

@@ -5,9 +5,12 @@
  */
 
 import { NextResponse } from 'next/server';
-import pool from '@/lib/db';
+import pool, { transaction } from '@/lib/db';
 
-const BOT_API_KEY = process.env.BOT_API_KEY || 'oratioo-bot-internal-key';
+const BOT_API_KEY = process.env.BOT_API_KEY;
+if (!BOT_API_KEY) {
+  throw new Error('Falta BOT_API_KEY en variables de entorno');
+}
 
 function detectarCambios(datosViejos: any, datosNuevos: any): any[] {
   const cambios: any[] = [];
@@ -117,56 +120,88 @@ export async function POST(req: Request) {
 
     const pid = proyecto_id || 1;
 
-    // Leer datos anteriores para comparar
-    const { rows: [prev] } = await pool.query(
-      `SELECT datos FROM clientes_proyectos WHERE id_cliente = $1 AND proyecto_id = $2`,
-      [id_cliente, pid]
-    );
-    const datosViejos = prev?.datos || null;
-
-    // Guardar datos nuevos
-    await pool.query(
-      `INSERT INTO clientes_proyectos (id_cliente, proyecto_id, datos, ultima_extraccion)
-       VALUES ($1, $2, $3, now())
-       ON CONFLICT (id_cliente, proyecto_id)
-       DO UPDATE SET datos = $3, ultima_extraccion = now(), updated_at = now()`,
-      [id_cliente, pid, JSON.stringify(datos)]
-    );
-
-    // Actualizar nombre en clientes
-    const nombre = datos?.header?.nombre;
-    if (nombre && nombre !== 'N/A' && nombre !== 'NO ES CLIENTE') {
-      await pool.query(
-        `UPDATE clientes SET nombre_razon_social = $1, updated_at = now()
-         WHERE id_cliente = $2 AND (nombre_razon_social IS NULL OR nombre_razon_social = '')`,
-        [nombre, id_cliente]
+    // ── Transacción: SELECT FOR UPDATE → UPSERT → detecciones → historial ──
+    await transaction(async (client) => {
+      // Leer datos anteriores con lock (evita race condition entre workers)
+      const { rows: [prev] } = await client.query(
+        `SELECT datos FROM clientes_proyectos WHERE id_cliente = $1 AND proyecto_id = $2 FOR UPDATE`,
+        [id_cliente, pid]
       );
-    }
+      const datosViejos = prev?.datos || null;
 
-    // Detectar cambios vs análisis anterior
-    if (datosViejos && datosViejos.estado !== 'pendiente') {
-      const cambios = detectarCambios(datosViejos, datos);
-      for (const c of cambios) {
-        await pool.query(
-          `INSERT INTO detecciones (id_cliente, proyecto_id, tipo, linea_numero, valor_anterior, valor_nuevo, datos_extra)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [id_cliente, pid, c.tipo, c.linea_numero || null, c.valor_anterior || null, c.valor_nuevo || null, JSON.stringify(c.datos_extra || {})]
+      // Determinar si hay datos reales previos
+      const tieneDatosPrevios = datosViejos && (
+        (datosViejos.lineas && datosViejos.lineas.length > 0) ||
+        (datosViejos.version_extraccion && datosViejos.version_extraccion >= 1)
+      );
+      const versionAnterior = tieneDatosPrevios
+        ? (datosViejos.version_extraccion || 1)
+        : 0;
+      const esPrimeraExtraccion = !tieneDatosPrevios;
+
+      // Incrementar versión de extracción
+      const datosConVersion = {
+        ...datos,
+        version_extraccion: versionAnterior + 1,
+        primera_extraccion_at: esPrimeraExtraccion
+          ? new Date().toISOString()
+          : (datosViejos?.primera_extraccion_at || new Date().toISOString()),
+      };
+
+      // Guardar datos nuevos (UPSERT)
+      await client.query(
+        `INSERT INTO clientes_proyectos (id_cliente, proyecto_id, datos, ultima_extraccion)
+         VALUES ($1, $2, $3, now())
+         ON CONFLICT (id_cliente, proyecto_id)
+         DO UPDATE SET datos = $3, ultima_extraccion = now(), updated_at = now()`,
+        [id_cliente, pid, JSON.stringify(datosConVersion)]
+      );
+
+      // Actualizar nombre en clientes
+      const nombre = datos?.header?.nombre;
+      if (nombre && nombre !== 'N/A' && nombre !== 'NO ES CLIENTE') {
+        await client.query(
+          `UPDATE clientes SET nombre_razon_social = $1, updated_at = now()
+           WHERE id_cliente = $2 AND (nombre_razon_social IS NULL OR nombre_razon_social = '')`,
+          [nombre, id_cliente]
         );
       }
-    }
 
-    // Registrar en historial
-    await pool.query(
-      `INSERT INTO historial (id_cliente, tipo, proyecto_id, descripcion, datos)
-       VALUES ($1, 'extraccion', $2, $3, $4)`,
-      [id_cliente, pid,
-       `Bot extrajo ${datos.lineas?.length || 0} lineas`,
-       JSON.stringify({ estado: estado || 'completado', cima: datos.cima_global || false, lineas_count: datos.lineas?.length || 0 })]
-    );
+      // Detectar cambios vs análisis anterior
+      if (!esPrimeraExtraccion && datosViejos) {
+        const cambios = detectarCambios(datosViejos, datos);
+        for (const c of cambios) {
+          await client.query(
+            `INSERT INTO detecciones (id_cliente, proyecto_id, tipo, linea_numero, valor_anterior, valor_nuevo, datos_extra)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [id_cliente, pid, c.tipo, c.linea_numero || null, c.valor_anterior || null, c.valor_nuevo || null, JSON.stringify(c.datos_extra || {})]
+          );
+        }
+      }
+
+      // Registrar en historial
+      const descripcion = esPrimeraExtraccion
+        ? `Análisis inicial — ${datos.lineas?.length || 0} líneas registradas`
+        : `Bot re-analizó: ${datos.lineas?.length || 0} líneas (v${datosConVersion.version_extraccion})`;
+      await client.query(
+        `INSERT INTO historial (id_cliente, tipo, proyecto_id, descripcion, datos)
+         VALUES ($1, 'extraccion', $2, $3, $4)`,
+        [id_cliente, pid,
+         descripcion,
+         JSON.stringify({
+           estado: estado || 'completado',
+           cima: datos.cima_global || false,
+           lineas_count: datos.lineas?.length || 0,
+           version_extraccion: datosConVersion.version_extraccion,
+           es_primera_extraccion: esPrimeraExtraccion,
+         })]
+      );
+    });
 
     return NextResponse.json({ success: true, id_cliente });
   } catch (error: any) {
     console.error('[bot-sync] Error:', error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('[api]', error.message);
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }

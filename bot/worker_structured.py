@@ -15,7 +15,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 from browser_setup import crear_contexto_espana
 from login import (
     extraer_datos_cliente, realizar_login, seleccionar_marca_orange,
-    abrir_nuevo_acto_comercial, manejar_cookies_flexible
+    abrir_nuevo_acto_comercial, manejar_cookies_flexible,
+    parsear_fecha_permanencia,
 )
 from bot_http import sync_resultado, sync_no_cliente
 
@@ -116,6 +117,7 @@ def extraer_datos_estructurados(page, dni):
                     details = b.locator("ocs-line-details").inner_text().strip()
                     linea["consumo"] = extraer_campo(details, r'Consumo\s+([^\n]+)')
                     linea["permanencia"] = extraer_campo(details, r'Permanencia\s+([^\n]+)')
+                    linea["permanencia_fecha"] = parsear_fecha_permanencia(linea["permanencia"])
                     linea["vap"] = extraer_campo(details, r'Venta a Plazos\s*\n?\s*([^\n]+)')
                 except: pass
                 try:

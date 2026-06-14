@@ -1,9 +1,12 @@
 /**
  * app/api/vpbx/originate/route.ts — Click2Call Endpoint
+ * 
+ * Rate limiting via Redis (o en memoria si Redis no disponible): 3s debounce.
  */
 
 import { NextResponse } from 'next/server';
 import { originateCall } from '@/lib/vpbx';
+import { debounceCheck } from '@/lib/redis';
 import pool from '@/lib/db';
 
 export async function POST(req: Request) {
@@ -11,6 +14,16 @@ export async function POST(req: Request) {
     const { from, to, dni } = await req.json();
     if (!from || !to) {
       return NextResponse.json({ error: 'from y to son requeridos' }, { status: 400 });
+    }
+
+    // Rate limiting via Redis (persiste entre deploys y cold starts)
+    const { allowed, retryAfterMs } = await debounceCheck(`click2call:${from}`, 3000);
+    if (!allowed) {
+      const segundos = Math.ceil(retryAfterMs / 1000);
+      return NextResponse.json(
+        { error: `Espera ${segundos} segundo${segundos > 1 ? 's' : ''} entre llamadas` },
+        { status: 429, headers: { 'Retry-After': String(segundos) } }
+      );
     }
 
     // 1. Lanzar llamada VPBX
@@ -31,6 +44,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, callId: result?.variables?.callId });
   } catch (error: any) {
     console.error('[originate] Error:', error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }

@@ -6,6 +6,7 @@
 
 import { useState, useEffect } from 'react';
 import { Phone, Target, Clock, AlertTriangle, TrendingUp, Users } from 'lucide-react';
+import FlipCard from '@/components/shared/FlipCard';
 
 type Stats = {
   totalPendientes: number; nuevos: number; porVencer: number;
@@ -40,20 +41,28 @@ export default function AsesorDashboard() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-xl font-bold text-[#1a1030]">Dashboard</h1>
-        <p className="text-sm text-[#7c757c] mt-0.5">Tu panel de trabajo</p>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Tu panel de trabajo</p>
       </div>
 
       {/* Cards */}
       <div className="grid grid-cols-4 gap-4">
-        <Card icon={Target} label="Leads Pendientes" value={stats?.totalPendientes || 0}
-          color="bg-blue-50 text-blue-700" loading={loading} />
-        <Card icon={Clock} label="Nuevos (24h)" value={stats?.nuevos || 0}
-          color="bg-emerald-50 text-emerald-700" loading={loading} />
-        <Card icon={AlertTriangle} label="Por Vencer" value={stats?.porVencer || 0}
-          color={stats?.porVencer ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-600'} loading={loading} />
-        <Card icon={Phone} label="Contactados Hoy" value={stats?.totalContactados || 0}
-          color="bg-purple-50 text-purple-700" loading={loading} />
+        <FlipCard back="Total de leads pendientes asignados">
+          <Card icon={Target} label="Leads Pendientes" value={stats?.totalPendientes || 0}
+            color="bg-blue-50 text-blue-700" loading={loading} />
+        </FlipCard>
+        <FlipCard back="Leads nuevos en las últimas 24h">
+          <Card icon={Clock} label="Nuevos (24h)" value={stats?.nuevos || 0}
+            color="bg-emerald-50 text-emerald-700" loading={loading} />
+        </FlipCard>
+        <FlipCard back="Leads que están por vencer">
+          <Card icon={AlertTriangle} label="Por Vencer" value={stats?.porVencer || 0}
+            color={stats?.porVencer ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-600'} loading={loading} />
+        </FlipCard>
+        <FlipCard back="Leads contactados en el día">
+          <Card icon={Phone} label="Contactados Hoy" value={stats?.totalContactados || 0}
+            color="bg-purple-50 text-purple-700" loading={loading} />
+        </FlipCard>
       </div>
 
       {/* Llamado a la acción */}
@@ -76,23 +85,27 @@ export default function AsesorDashboard() {
 
       {/* Estado general */}
       <div className="card">
-        <h3 className="text-sm font-semibold text-[#1a1030] mb-4 flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
           <TrendingUp size={16} className="text-[#0a6ea9]" />
           Resumen del Día
         </h3>
         <div className="grid grid-cols-2 gap-4 text-sm">
-          <div className="bg-[#f8f7fa] rounded-lg p-4">
-            <p className="text-xs text-[#7c757c] mb-1">Leads sin tocar</p>
-            <p className="text-xl font-bold text-[#1a1030]">{stats?.totalPendientes || 0}</p>
-            {stats?.porVencer ? (
-              <p className="text-[10px] text-red-500 mt-1">{stats.porVencer} vencerán pronto</p>
-            ) : null}
-          </div>
-          <div className="bg-[#f8f7fa] rounded-lg p-4">
-            <p className="text-xs text-[#7c757c] mb-1">Contactados hoy</p>
-            <p className="text-xl font-bold text-[#1a1030]">{stats?.totalContactados || 0}</p>
-            <p className="text-[10px] text-[#7c757c] mt-1">Seguí así</p>
-          </div>
+          <FlipCard back="Leads que aún no han sido contactados">
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Leads sin tocar</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">{stats?.totalPendientes || 0}</p>
+              {stats?.porVencer ? (
+                <p className="text-[10px] text-red-500 mt-1">{stats.porVencer} vencerán pronto</p>
+              ) : null}
+            </div>
+          </FlipCard>
+          <FlipCard back="Contactos realizados en el día">
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Contactados hoy</p>
+              <p className="text-xl font-bold text-gray-900 dark:text-white">{stats?.totalContactados || 0}</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">Seguí así</p>
+            </div>
+          </FlipCard>
         </div>
       </div>
     </div>

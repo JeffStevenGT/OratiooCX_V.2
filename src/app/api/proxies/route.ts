@@ -7,6 +7,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { requireRole } from '@/lib/auth-roles';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
@@ -35,6 +36,7 @@ function parseLine(line: string) {
 
 // ── GET ──
 export async function GET() {
+  await requireRole('it', 'desarrollador', 'jefe_area');
   const lines = readProxies();
   return NextResponse.json({
     total: lines.length,
@@ -44,6 +46,7 @@ export async function GET() {
 
 // ── POST (agregar) ──
 export async function POST(req: Request) {
+  await requireRole('it', 'desarrollador');
   try {
     const body = await req.json();
     const { ip, port, user, pass, line } = body;
@@ -70,12 +73,14 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, proxy: parseLine(newLine), total: lines.length });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error('[api]', e.message);
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }
 
 // ── DELETE ──
 export async function DELETE(req: Request) {
+  await requireRole('it', 'desarrollador');
   try {
     const { ip } = await req.json();
     if (!ip) return NextResponse.json({ error: 'Falta IP' }, { status: 400 });
@@ -89,6 +94,7 @@ export async function DELETE(req: Request) {
     writeProxies(filtered);
     return NextResponse.json({ success: true, total: filtered.length });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error('[api]', e.message);
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }

@@ -20,7 +20,7 @@ from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).parent.parent / '.env')
 
 BACKEND_URL = os.getenv("BOT_API_URL", "http://localhost:3000")
 BOT_API_KEY = os.getenv("BOT_API_KEY", "oratioo-bot-internal-key")
@@ -102,32 +102,74 @@ def spawn_workers(count: int, machine_name: str):
     # Rescatar DNIs atascados del arranque anterior
     rescue_stale_dnis(minutos=1)  # 1 min — solo los realmente zombies
 
+    # Obtener credenciales Pangea desde la API
+    creds = fetch_credentials()
+    if not creds:
+        print("[COORDINATOR] ⚠️ Sin credenciales en BD. Usando .env como fallback.")
+        creds = [{"usuario": os.getenv("ORANGE_USER", ""), "password": os.getenv("ORANGE_PASS", "")}]
+    print(f"[COORDINATOR] {len(creds)} credencial(es) disponibles")
+
     for i in range(count):
+        c = creds[i % len(creds)] if creds else {"usuario": "", "password": ""}
         p = subprocess.Popen(
             [sys.executable, str(BOT_DIR / "worker_loop.py"),
              "--proxy", "--worker-id", str(i),
-             "--machine", machine_name],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
+             "--machine", machine_name,
+             "--credential-user", c.get("usuario", ""),
+             "--credential-pass", c.get("password", "")],
+            # No capture stdout — let workers print directly for debugging
         )
         processes.append(p)
-        print(f"  Worker {i+1} PID {p.pid} (proxy #{i})")
+        print(f"  Worker {i+1} PID {p.pid} (proxy #{i}, cred #{i % len(creds)})")
 
     print(f"[COORDINATOR] {count} workers activos.\n")
 
+def fetch_credentials():
+    """Obtiene credenciales Pangea activas desde la API."""
+    try:
+        r = requests.get(
+            f"{BACKEND_URL}/api/bot/credenciales",
+            headers={"Authorization": f"Bearer {BOT_API_KEY}"},
+            timeout=10,
+        )
+        if r.ok:
+            return r.json()
+    except Exception as e:
+        print(f"[COORDINATOR] Error obteniendo credenciales: {e}")
+    return []
+
+
+_worker_restart_count: dict = {}
+
 def restart_dead_workers(machine_name: str):
+    """Reinicia workers muertos con límite de 5 reintentos por hora."""
+    global _worker_restart_count
+    now_hour = int(time.time() / 3600)
+    # Resetear contador cada hora
+    if not hasattr(restart_dead_workers, '_last_hour') or restart_dead_workers._last_hour != now_hour:
+        restart_dead_workers._last_hour = now_hour
+        _worker_restart_count.clear()
+    creds = fetch_credentials()
+    if not creds:
+        creds = [{"usuario": os.getenv("ORANGE_USER", ""), "password": os.getenv("ORANGE_PASS", "")}]
+    
     for i, p in enumerate(processes):
         if p.poll() is not None:
             rc = p.returncode
-            print(f"[COORDINATOR] Worker {i+1} murió (exit={rc}). Reiniciando...")
+            c = creds[i % len(creds)] if creds else {"usuario": "", "password": ""}
+            key = f"{machine_name}-{i}"
+            count = _worker_restart_count.get(key, 0)
+            if count >= 5:
+                print(f"[COORDINATOR] Worker {i+1} alcanzó límite de reinicios (5/h). Detenido.")
+                continue
+            _worker_restart_count[key] = count + 1
+            print(f"[COORDINATOR] Worker {i+1} murió (exit={rc}). Reiniciando ({count+1}/5)...")
             processes[i] = subprocess.Popen(
                 [sys.executable, str(BOT_DIR / "worker_loop.py"),
                  "--proxy", "--worker-id", str(i),
-                 "--machine", machine_name],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
+                 "--machine", machine_name,
+                 "--credential-user", c.get("usuario", ""),
+                 "--credential-pass", c.get("password", "")],
             )
 
 # ═══════════════════════════════════════════
@@ -215,7 +257,7 @@ def main():
     last_alive = 0
     last_rescue = 0
     last_release_check = 0
-    RESCUE_INTERVAL = 120  # cada 2 minutos
+    RESCUE_INTERVAL = 60  # cada 1 minuto (antes 120s)
     RELEASE_INTERVAL = 3600  # verificar cada hora
     while True:
         try:

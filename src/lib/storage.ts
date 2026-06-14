@@ -27,7 +27,8 @@ const s3 = IS_LOCAL ? null : new S3Client({
   },
 });
 
-const BUCKET = process.env.R2_BUCKET_NAME || 'oratioo-cx';
+/** @deprecated VPBX almacena grabaciones 1 año nativo. R2 ya no se usa. */
+const BUCKET = process.env.R2_BUCKET_NAME || '';
 const LOCAL_UPLOADS = path.join(process.cwd(), 'uploads');
 
 // Asegurar que la carpeta local existe

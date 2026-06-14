@@ -1,8 +1,8 @@
 """
-piloto.py — Copia exacta del worker de master SIN Supabase + verbose dump
+piloto.py — Copia exacta del worker de master + verbose dump
 =====================================================================
 - Mismo login, mismos reintentos, mismas funciones
-- Lee DNIs de numeros.txt (no de Supabase)
+- Lee DNIs de numeros.txt (local)
 - NO guarda nada en BD
 - Dump de todas las pestañas para análisis
 """

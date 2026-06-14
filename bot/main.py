@@ -4,9 +4,10 @@ main.py — Bot Pangea Orange (Oratioo CX)
 FLUJO EXACTO del proyecto de referencia Bot_Orange:
   1. Login en Pangea Orange
   2. Por cada número: buscar, extraer cabecera, líneas con pestañas
-  3. Guardar en Supabase (o local para prueba)
+  3. Guardar resultados en JSON local
 
 DIFERENCIA CLAVE: busca por DOCUMENTO (DNI) en vez de teléfono.
+Para producción usar coordinator_loop.py + worker_loop.py que guardan vía API en PostgreSQL.
 """
 
 import os
@@ -35,7 +36,6 @@ load_dotenv()
 # ── Config ────────────────────────────────────────
 
 ORANGE_URL = "https://pangea.orange.es/"
-USE_SUPABASE = os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_KEY")
 REINTENTOS_POR_DNI = int(os.getenv("REINTENTOS_DNI", "3"))
 PAUSA_ENTRE_DNIS_MS = random.randint(2000, 4000)
 
@@ -71,105 +71,11 @@ def guardar_resultados_local(resultados: list):
         log(f"⚠️ Error guardando local: {e}")
 
 
-def guardar_en_supabase(resultados: list):
-    """Guarda cada fila de resultados en Supabase."""
-    try:
-        from supabase_client import guardar_resultado
-        for fila in resultados:
-            dni = fila.get("DNI", fila.get("Linea", "N/A"))
-            es_cima = fila.get("es_cima", False)
-
-            # ── Detectar si NO ES CLIENTE ──
-            no_cliente = fila.get("Nombre", "") == "NO ES CLIENTE"
-
-            if no_cliente:
-                # Guardar con estado especial
-                datos = {
-                    "nombre": "NO ES CLIENTE",
-                    "linea_principal": dni,
-                    "paquete": "N/A",
-                    "atributos_dinamicos": {
-                        "estado": "no_cliente",
-                        "datos_basicos": {"dni": dni},
-                        "cima": "NO",
-                        "renove_mixto_variante": "N/A",
-                        "renove_mixto_todas": "N/A",
-                        "linea": {
-                            "numero": dni,
-                            "es_cima": False,
-                            "tiene_renove_mixto": False,
-                            "etiquetas": [],
-                            "es_principal": False,
-                            "activo_desde": "N/A",
-                            "tiene_tv": False,
-                        },
-                    },
-                }
-                guardar_resultado(dni, datos, estado="no_cliente")
-            else:
-                # Empaquetar atributos dinámicos
-                dinamicos = {
-                    "cima": "SI" if es_cima else "NO",
-                    "tiene_renove_mixto": fila.get("tiene_renove_mixto", False),
-                    "renove_mixto_variante": fila.get("variante_renove", "N/A"),
-                    "renove_mixto_todas": fila.get("variante_renove", "N/A"),
-                    "tipo_renove": fila.get("variante_renove", "N/A"),
-                    "estado": "completado",
-                    "cima_tags": fila.get("tiene_tv", False) and "TV" or "N/A",
-                    "etiquetas": fila.get("etiquetas", []),
-                    "es_principal": fila.get("es_principal", False),
-                    "activo_desde": fila.get("activo_desde", "N/A"),
-                    "datos_basicos": {
-                        "nombre": fila.get("Nombre", "N/A"),
-                        "direccion": fila.get("Direccion", "N/A"),
-                        "seg_fijo": fila.get("Seg Fijo", "N/A"),
-                        "seg_movil": fila.get("Seg Movil", "N/A"),
-                        "dni": dni,
-                    },
-                    "linea": {
-                        "linea_principal": fila.get("Linea", "N/A"),
-                        "numero": fila.get("Linea", "N/A"),
-                        "paquete": fila.get("Paquete", "N/A"),
-                        "es_cima": es_cima,
-                        "tiene_renove_mixto": fila.get("tiene_renove_mixto", False),
-                        "variante_renove": fila.get("variante_renove", "N/A"),
-                        "tiene_tv": fila.get("tiene_tv", False),
-                        "es_principal": fila.get("es_principal", False),
-                        "etiquetas": fila.get("etiquetas", []),
-                        "activo_desde": fila.get("activo_desde", "N/A"),
-                    },
-                    "pestanas": {
-                        "Destacadas": fila.get("Destacadas", "N/A"),
-                        "Renove": fila.get("Renove", "N/A"),
-                        "Bonos y D.": fila.get("Bonos y D.", "N/A"),
-                        "Cambio Tarifa": fila.get("Cambio Tarifa", "N/A"),
-                        "SVA": fila.get("SVA", "N/A"),
-                    },
-                }
-
-                datos = {
-                    "nombre": fila.get("Nombre", "N/A"),
-                    "direccion": fila.get("Direccion", "N/A"),
-                    "linea_principal": fila.get("Linea", "N/A"),
-                    "seg_fijo": fila.get("Seg Fijo", "N/A"),
-                    "seg_movil": fila.get("Seg Movil", "N/A"),
-                    "paquete": fila.get("Paquete", "N/A"),
-                    "atributos_dinamicos": dinamicos,
-                }
-
-                guardar_resultado(dni, datos, estado="completado")
-
-        log(f"☁️  {len(resultados)} filas guardadas en Supabase")
-    except Exception as e:
-        log(f"⚠️ Error guardando en Supabase: {e}")
-
-
 # ── Main ──────────────────────────────────────────
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="Bot Pangea Orange - Oratioo CX")
-    parser.add_argument("--local", action="store_true", help="Modo prueba sin Supabase")
+    parser = argparse.ArgumentParser(description="Bot Pangea Orange - Oratioo CX (modo local)")
     parser.add_argument("--dnis", type=str, default=None, help="Archivo con DNIs")
     parser.add_argument("--max", type=int, default=0, help="Máximo DNIs a procesar")
     parser.add_argument("--headless", action="store_true", help="Modo headless")
@@ -185,12 +91,7 @@ def main():
         return
 
     log(f"📄 {len(dnis)} DNIs cargados")
-    if args.local:
-        log("🏠 Modo LOCAL (sin Supabase)")
-    elif USE_SUPABASE:
-        log("☁️  Modo SUPABASE")
-    else:
-        log("⚠️  Sin Supabase configurado. Usando --local implícito.")
+    log("🏠 Modo LOCAL — resultados en resultados_local.json")
 
     # ── Cargar proxies ──
     proxies_disponibles = cargar_proxies()
@@ -229,7 +130,7 @@ def main():
                 log(f"📊 CLIENTE [{idx+1}/{len(dnis)}]: {dni}")
                 log(f"{'='*50}")
 
-                # Pausa aleatoria entre DNIs (como en el referencia)
+                # Pausa aleatoria entre DNIs
                 page.wait_for_timeout(random.randint(2000, 4000))
 
                 # Extraer datos del cliente (buscando por DNI)
@@ -239,7 +140,6 @@ def main():
                     log(f"  ⚠️  {dni} sin resultados — saltando")
                     continue
 
-                # Guardar TODOS los resultados (clientes válidos + no_clientes)
                 todos_resultados.extend(filas_cliente)
 
                 no_cliente = any(
@@ -250,11 +150,8 @@ def main():
 
                 log(f"✅ {len(filas_cliente)} líneas extraídas")
 
-                # Guardar según modo
-                if args.local or not USE_SUPABASE:
-                    guardar_resultados_local(todos_resultados)
-                else:
-                    guardar_en_supabase(filas_cliente)
+                # Guardar incremental
+                guardar_resultados_local(todos_resultados)
 
                 # Resumen parcial (solo datos válidos)
                 filas_validas = [
@@ -282,9 +179,8 @@ def main():
                 log(f"  🟢 Líneas CIMA: {total_cima}")
                 log(f"  ⭐ Líneas con Renove Mixto: {total_rm}")
 
-            if args.local or not USE_SUPABASE:
-                guardar_resultados_local(todos_resultados)
-                log(f"\n📁 Resultados guardados en: {LOCAL_DB_PATH}")
+            guardar_resultados_local(todos_resultados)
+            log(f"\n📁 Resultados guardados en: {LOCAL_DB_PATH}")
 
             log(f"\n✅ EXTRACCIÓN FINALIZADA")
             input(">>> Presiona ENTER para cerrar el bot...")

@@ -1,0 +1,45 @@
+# Oratioo CX — docker-compose.yml
+# Servicios: Next.js App + PostgreSQL
+
+services:
+  app:
+    build: .
+    container_name: oratioo-cx
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:3000:3000'  # solo accesible desde localhost (Nginx → proxy_pass)
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env.production
+    networks:
+      - oratioo
+
+  db:
+    image: postgres:16-alpine
+    container_name: oratioo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me}
+      POSTGRES_DB: oratioo_cx
+    ports:
+      - '127.0.0.1:5432:5432'  # solo localhost, NUNCA expuesto a internet
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docs/migracion_fichajes.sql:/docker-entrypoint-initdb.d/01_fichajes.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - oratioo
+
+volumes:
+  pgdata:
+
+networks:
+  oratioo:
+    driver: bridge

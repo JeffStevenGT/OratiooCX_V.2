@@ -1,14 +1,22 @@
 /**
  * app/api/bot/touch/route.ts — Touch DNI (mantiene vivo el updated_at)
- * =====================================================================
- * El worker llama a este endpoint mientras procesa un DNI.
- * Así el rescate de DNIs atascados sabe que este DNI sigue vivo.
+ * Protegido con API key interna del bot.
  */
 
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 
+const BOT_API_KEY = process.env.BOT_API_KEY;
+if (!BOT_API_KEY) {
+  throw new Error('Falta BOT_API_KEY en variables de entorno');
+}
+
 export async function PATCH(req: Request) {
+  const apiKey = req.headers.get('x-bot-api-key');
+  if (apiKey !== BOT_API_KEY) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const { id_cliente } = await req.json();
     if (!id_cliente) return NextResponse.json({ error: 'Falta id_cliente' }, { status: 400 });
@@ -24,6 +32,7 @@ export async function PATCH(req: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error('[api]', e.message);
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }

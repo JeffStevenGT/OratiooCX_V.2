@@ -13,6 +13,7 @@ type Props = { userId?: string; userRole?: string };
 
 export default function NotificationBadge({ userId, userRole }: Props) {
   const [count, setCount] = useState(0);
+  const [tooltip, setTooltip] = useState('');
 
   useEffect(() => {
     if (!userId) return;
@@ -23,9 +24,21 @@ export default function NotificationBadge({ userId, userRole }: Props) {
         const data = await res.json();
         // Sumar notificaciones relevantes según rol
         if (userRole === 'asesor') {
-          setCount((data.nuevos || 0) + (data.porVencer || 0));
+          const nuevos = data.nuevos || 0;
+          const porVencer = data.porVencer || 0;
+          setCount(nuevos + porVencer);
+          const parts: string[] = [];
+          if (nuevos) parts.push(`${nuevos} nuevos`);
+          if (porVencer) parts.push(`${porVencer} por vencer`);
+          setTooltip(parts.join(', '));
         } else {
-          setCount((data.sinAsignar || 0) + (data.liberados || 0));
+          const sinAsignar = data.sinAsignar || 0;
+          const liberados = data.liberados || 0;
+          setCount(sinAsignar + liberados);
+          const parts: string[] = [];
+          if (sinAsignar) parts.push(`${sinAsignar} sin asignar`);
+          if (liberados) parts.push(`${liberados} liberados`);
+          setTooltip(parts.join(', '));
         }
       } catch { /* */ }
     };
@@ -38,7 +51,8 @@ export default function NotificationBadge({ userId, userRole }: Props) {
   if (count === 0) return null;
 
   return (
-    <div className="flex items-center gap-1.5 px-2 py-1 bg-red-500 rounded-full text-white text-[10px] font-bold animate-pulse">
+    <div className="flex items-center gap-1.5 px-2 py-1 bg-red-500 rounded-full text-white text-[10px] font-bold animate-pulse"
+      title={tooltip}>
       <Bell size={10} />
       {count}
     </div>

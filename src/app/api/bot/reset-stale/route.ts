@@ -1,14 +1,22 @@
 /**
  * app/api/bot/reset-stale/route.ts — Rescata DNIs atascados
- * ==========================================================
- * Devuelve a 'pendiente' los DNIs que llevan más de N minutos en 'en_progreso'.
- * Los worker zombies no los van a terminar — mejor resetearlos.
+ * Protegido con API key interna del bot.
  */
 
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 
+const BOT_API_KEY = process.env.BOT_API_KEY;
+if (!BOT_API_KEY) {
+  throw new Error('Falta BOT_API_KEY en variables de entorno');
+}
+
 export async function POST(req: Request) {
+  const apiKey = req.headers.get('x-bot-api-key');
+  if (apiKey !== BOT_API_KEY) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const { minutos = 5 } = await req.json().catch(() => ({}));
 
@@ -24,6 +32,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ rescatados: rowCount ?? 0 });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error('[api]', e.message);
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }

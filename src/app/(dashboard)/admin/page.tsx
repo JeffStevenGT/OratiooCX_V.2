@@ -5,7 +5,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Shield, Loader2, Users, Bot, Wifi, Activity, Server, AlertTriangle, User, Phone, RotateCcw } from 'lucide-react';
+import { LayoutDashboard, Shield, Loader2, Users, Bot, Wifi, Activity, Server, AlertTriangle, User, Phone, RotateCcw } from 'lucide-react';
+import FlipCard from '@/components/shared/FlipCard';
+
+const PAGE_SIZES = [10, 25, 50, 100];
 
 const TIPOS = [
   { key: '', label: 'Todos' },
@@ -24,6 +27,10 @@ export default function AdminPage() {
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [tipo, setTipo] = useState('');
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => { setPage(1); }, [tipo]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -50,21 +57,39 @@ export default function AdminPage() {
     return map[t] || 'bg-gray-100 text-gray-600';
   };
 
+  const totalPages = Math.ceil(eventos.length / pageSize);
+  const paged = eventos.slice((page - 1) * pageSize, page * pageSize);
+
   return (
     <div className="space-y-6 animate-fade-in">
-      <h1 className="text-xl font-bold text-[#1a1030]">Dashboard Admin</h1>
+      <h1 className="text-xl font-bold text-[#1a1030] flex items-center gap-2"><LayoutDashboard size={22} className="text-[#0a6ea9]" />Dashboard Admin</h1>
+          <p className="text-sm text-[#7c757c] mt-0.5">Panel de administración del sistema</p>
 
       {/* KPIs */}
       <div className="grid grid-cols-4 gap-4">
-        <MiniKPI icon={Users} label="Clientes" value={stats?.totalClientes || 0} color="text-[#481163]" />
-        <MiniKPI icon={Bot} label="Pendientes" value={stats?.pendientes || 0} color="text-amber-500" />
-        <MiniKPI icon={Activity} label="Completados" value={stats?.completados || 0} color="text-emerald-500" />
-        <MiniKPI icon={AlertTriangle} label="Errores" value={stats?.errores || 0} color="text-red-500" />
+        <FlipCard back="Total de clientes en la base de datos">
+          <MiniKPI icon={Users} label="Clientes" value={stats?.totalClientes || 0} color="text-[#481163]" />
+        </FlipCard>
+        <FlipCard back="Tareas pendientes de procesar">
+          <MiniKPI icon={Bot} label="Pendientes" value={stats?.pendientes || 0} color="text-amber-500" />
+        </FlipCard>
+        <FlipCard back="Tareas completadas exitosamente">
+          <MiniKPI icon={Activity} label="Completados" value={stats?.completados || 0} color="text-emerald-500" />
+        </FlipCard>
+        <FlipCard back="Errores registrados en procesos">
+          <MiniKPI icon={AlertTriangle} label="Errores" value={stats?.errores || 0} color="text-red-500" />
+        </FlipCard>
       </div>
       <div className="grid grid-cols-3 gap-4">
-        <MiniKPI icon={Server} label="Máquinas online" value={stats?.maquinasOnline || 0} color="text-blue-500" />
-        <MiniKPI icon={Activity} label="Workers activos" value={stats?.workersActivos || 0} color="text-emerald-500" />
-        <MiniKPI icon={Users} label="Tasa completados" value={`${stats ? Math.round((stats.completados / Math.max(stats.totalClientes || 1, 1)) * 100) : 0}%`} color="text-purple-500" />
+        <FlipCard back="Máquinas del cluster conectadas">
+          <MiniKPI icon={Server} label="Máquinas online" value={stats?.maquinasOnline || 0} color="text-blue-500" />
+        </FlipCard>
+        <FlipCard back="Workers activos procesando">
+          <MiniKPI icon={Activity} label="Workers activos" value={stats?.workersActivos || 0} color="text-emerald-500" />
+        </FlipCard>
+        <FlipCard back="Porcentaje de tareas completadas">
+          <MiniKPI icon={Users} label="Tasa completados" value={`${stats ? Math.round((stats.completados / Math.max(stats.totalClientes || 1, 1)) * 100) : 0}%`} color="text-purple-500" />
+        </FlipCard>
       </div>
 
       {/* Auditoría */}
@@ -96,7 +121,7 @@ export default function AdminPage() {
                 </tr>
               </thead>
               <tbody>
-                {eventos.slice(0, 50).map(e => (
+                {paged.map(e => (
                   <tr key={e.id} className="border-b border-[#f0f0f8]">
                     <td className="py-1 px-2 whitespace-nowrap">{e.created_at ? new Date(e.created_at).toLocaleString('es-PE') : '—'}</td>
                     <td className="py-1 px-2"><span className={`rounded-full px-1.5 py-0.5 text-[8px] font-medium ${tipoBadge(e.tipo)}`}>{e.tipo}</span></td>
@@ -108,6 +133,32 @@ export default function AdminPage() {
             </table>
           </div>
         )}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#7c757c]">Mostrar</span>
+              <select value={pageSize} onChange={e => { setPageSize(+e.target.value); setPage(1); }}
+                className="border border-[#e0e0f0] rounded-lg px-2 py-1 text-xs bg-white">
+                {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <span className="text-xs text-[#7c757c]">de {eventos.length}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                className="btn-outline text-xs px-3 py-1 disabled:opacity-30">Anterior</button>
+              <span className="text-xs text-[#7c757c] px-2">{page} / {totalPages}</span>
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                className="btn-outline text-xs px-3 py-1 disabled:opacity-30">Siguiente</button>
+            </div>
+          </div>
+        )}
+      </div>
+      {/* ── Info ── */}
+      <div className="mt-8 card-sm bg-[#f8f7fa] dark:bg-[#1e1a2a] border-dashed border-[#e0e0f0] dark:border-[#2a1f3a]">
+        <h3 className="text-xs font-semibold text-[#7c757c] uppercase tracking-wider mb-2">💡 ¿Cómo funciona?</h3>
+        <ul className="space-y-1 text-[11px] text-[#7c757c]">
+          <li>· Panel de control para administradores. Acceso a estadísticas globales y configuración avanzada.</li>
+        </ul>
       </div>
     </div>
   );

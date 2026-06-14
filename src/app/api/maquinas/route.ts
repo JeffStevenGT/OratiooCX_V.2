@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { requireRole } from '@/lib/auth-roles';
 
 // ── GET ──
 export async function GET() {
@@ -13,13 +14,15 @@ export async function GET() {
     );
     return NextResponse.json(rows);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error('[api]', e.message);
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }
 
 // ── POST (crear) ──
 export async function POST(req: Request) {
   try {
+    await requireRole('it', 'desarrollador');
     const { nombre, ip, workers_max, notas } = await req.json();
     if (!nombre) return NextResponse.json({ error: 'Falta nombre' }, { status: 400 });
 
@@ -34,20 +37,23 @@ export async function POST(req: Request) {
 
     return NextResponse.json(m, { status: 201 });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error('[api]', e.message);
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }
 
 // ── DELETE ──
 export async function DELETE(req: Request) {
   try {
+    await requireRole('it', 'desarrollador');
     const { id } = await req.json();
     if (!id) return NextResponse.json({ error: 'Falta id' }, { status: 400 });
 
     await pool.query('DELETE FROM maquinas WHERE id = $1', [id]);
     return NextResponse.json({ success: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error('[api]', e.message);
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }
 
@@ -69,6 +75,7 @@ export async function PATCH(req: Request) {
 
     return NextResponse.json({ success: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error('[api]', e.message);
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }

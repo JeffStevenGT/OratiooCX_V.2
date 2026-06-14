@@ -1,15 +1,23 @@
 /**
  * app/api/bot/command/route.ts — Comandos al Bot (Multi-Máquina)
  * ================================================================
- * Frontend → POST /api/bot/command { comando, workers, maquina }
- * Bot      → GET /api/bot/command?maquina=NOMBRE
+ * POST: Frontend (autenticado) envía comando
+ * GET:  Coordinator consulta comandos para su máquina
  */
 
 import { NextResponse } from 'next/server';
+import { auth } from '@/lib/auth';
 import pool from '@/lib/db';
 
 // ── POST: Frontend envía comando ──
 export async function POST(req: Request) {
+  const session = await auth();
+  if (!session?.user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
+  const role = (session.user as any).role;
+  if (!['jefe_area', 'it', 'desarrollador', 'supervisor'].includes(role)) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
+  }
+
   const { comando, workers, maquina } = await req.json();
   if (!comando) return NextResponse.json({ error: 'Falta comando' }, { status: 400 });
 

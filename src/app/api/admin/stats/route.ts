@@ -3,10 +3,12 @@
  */
 
 import { NextResponse } from 'next/server';
+import { requireRole } from '@/lib/auth-roles';
 import pool from '@/lib/db';
 
 export async function GET() {
   try {
+    await requireRole('it', 'desarrollador', 'jefe_area');
     const [clientes, pendientes, completados, errores, maquinas, workers] = await Promise.all([
       pool.query('SELECT COUNT(*) FROM clientes'),
       pool.query("SELECT COUNT(*) FROM clientes_proyectos WHERE datos->>'estado' = 'pendiente' AND proyecto_id = 1"),
@@ -25,6 +27,7 @@ export async function GET() {
       workersActivos: parseInt(workers.rows[0].count || '0'),
     });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error('[api]', e.message);
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }

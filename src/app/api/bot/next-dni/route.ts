@@ -1,17 +1,28 @@
 /**
  * app/api/bot/next-dni/route.ts — Siguiente DNI Pendiente
+ * Protegido con API key interna del bot.
  */
 
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 
-export async function GET() {
+const BOT_API_KEY = process.env.BOT_API_KEY;
+if (!BOT_API_KEY) {
+  throw new Error('Falta BOT_API_KEY en variables de entorno');
+}
+
+export async function GET(req: Request) {
+  const apiKey = req.headers.get('x-bot-api-key');
+  if (apiKey !== BOT_API_KEY) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const { rows } = await pool.query(`
       WITH tomado AS (
         SELECT cp.id, cp.id_cliente
         FROM clientes_proyectos cp
-        WHERE cp.proyecto_id = 1
+        WHERE cp.proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'orange')
           AND cp.datos->>'estado' = 'pendiente'
         LIMIT 1
         FOR UPDATE SKIP LOCKED

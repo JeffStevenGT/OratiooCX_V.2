@@ -5,8 +5,11 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    const tramitados = searchParams.get('tramitados') === 'true';
+    const estado = tramitados ? 'tramitado' : 'venta';
     const { rows } = await pool.query(`
       SELECT pl.id, pl.id_cliente, c.numero_documento as dni,
              COALESCE(c.nombre_razon_social, 'Sin nombre') as nombre,
@@ -17,13 +20,14 @@ export async function GET() {
       JOIN usuarios u ON pl.asesor_id = u.id
       LEFT JOIN clientes_proyectos cp ON c.id_cliente = cp.id_cliente
         AND cp.proyecto_id = pl.proyecto_id
-      WHERE pl.estado = 'venta'
+      WHERE pl.estado = $1
         AND pl.deleted_at IS NULL
       ORDER BY pl.ultimo_cambio DESC
       LIMIT 100
-    `);
+    `, [estado]);
     return NextResponse.json(rows);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error('[api]', e.message);
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }

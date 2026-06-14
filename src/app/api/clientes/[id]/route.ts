@@ -4,6 +4,7 @@
 
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
+import { requireRole } from '@/lib/auth-roles';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -29,7 +30,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       [id]
     );
 
-    return NextResponse.json({ ...cliente, detecciones });
+    // Extraer metadata de versión desde los datos del proyecto
+    const datos = cliente.datos || {};
+    const versionExtraccion = datos.version_extraccion || 1;
+    const esPrimeraExtraccion = versionExtraccion <= 1 && detecciones.length === 0;
+
+    return NextResponse.json({
+      ...cliente,
+      detecciones,
+      version_extraccion: versionExtraccion,
+      es_primera_extraccion: esPrimeraExtraccion,
+    });
   } catch {
     return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
@@ -63,5 +74,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ success: true });
   } catch {
     return NextResponse.json({ error: 'Error' }, { status: 500 });
+  }
+}
+
+// DELETE — RGPD: derecho al olvido (soft delete + anonimizacion)
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    await requireRole('jefe_area', 'desarrollador');
+    const { id } = await params;
+    await pool.query(`UPDATE clientes SET deleted_at = now() WHERE id_cliente = $1 AND deleted_at IS NULL`, [id]);
+    await pool.query(`INSERT INTO historial (id_cliente, tipo, proyecto_id, descripcion) VALUES ($1, 'rgpd_olvido', 1, 'Derecho al olvido - datos anonimizados')`, [id]);
+    return NextResponse.json({ success: true, mensaje: 'Cliente anonimizado' });
+  } catch (e: any) {
+    console.error('[api]', e.message);
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }

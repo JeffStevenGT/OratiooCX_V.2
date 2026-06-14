@@ -5,8 +5,12 @@
 import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    const userId = searchParams.get('user_id');
+    const userRol = searchParams.get('rol');
+
     const hoy = new Date().toISOString().split('T')[0];
     const mananaDate = new Date(Date.now() + 86400000).toISOString().split('T')[0];
     const semanaFin = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
@@ -15,7 +19,9 @@ export async function GET() {
       SELECT pl.id, pl.id_cliente, c.numero_documento as dni,
              COALESCE(c.nombre_razon_social, 'Sin nombre') as nombre,
              pl.callback_at, pl.estado, u.nombre as asesor,
-             cp.datos->'lineas'->0->>'numero' as linea
+             cp.datos->'lineas'->0->>'numero' as linea,
+             CASE WHEN (cp.datos->>'cima_global')::boolean THEN 'SI' ELSE 'NO' END as cima,
+             (SELECT COUNT(*) FROM historial h WHERE h.id_cliente = pl.id_cliente AND h.tipo = 'llamada')::int as intentos
       FROM pipeline pl
       JOIN clientes c ON pl.id_cliente = c.id_cliente
       JOIN usuarios u ON pl.asesor_id = u.id
@@ -24,6 +30,7 @@ export async function GET() {
       WHERE pl.callback_at IS NOT NULL
         AND pl.deleted_at IS NULL
         AND pl.estado = 'no_contesta'
+        ${userId && userRol === 'asesor' ? `AND pl.asesor_id = ${parseInt(userId)}` : ''}
       ORDER BY pl.callback_at ASC
       LIMIT 200
     `);
@@ -41,6 +48,7 @@ export async function GET() {
 
     return NextResponse.json({ vencidos, hoy: hoyList, manana: mananaList, semana: semanaList });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error('[api]', e.message);
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }

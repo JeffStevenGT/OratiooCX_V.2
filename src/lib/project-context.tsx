@@ -6,7 +6,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-type Proyecto = { id: number; nombre: string; nombre_visible: string; activo: boolean };
+type Proyecto = { id: number; nombre: string; nombre_visible: string; activo: boolean; config?: any };
 
 const ProjectContext = createContext<{
   proyecto: Proyecto | null;
@@ -24,8 +24,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       .then(data => {
         setProyectos(data);
         // Seleccionar Orange por defecto
-        const orange = data.find((p: Proyecto) => p.nombre === 'orange');
-        if (orange) setProyecto(orange);
+        const activo = data.find((p: Proyecto) => p.activo !== false);
+        if (activo) setProyecto(activo);
       });
   }, []);
 

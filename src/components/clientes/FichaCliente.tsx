@@ -15,6 +15,7 @@ interface Cliente {
   tipo_persona: string;
   cnae: string;
   telefonos: string[];
+  telefonos_v2: { num: string; tipo: string; origen: string }[];
   emails: string[];
   direccion: any;
   proyectos_datos: any[];
@@ -90,13 +91,27 @@ export default function FichaCliente({ clienteId, onClose }: Props) {
                 <InfoCard icon={Users} label="Tipo" value={cliente.tipo_persona || 'natural'} />
                 <InfoCard icon={Building} label="CNAE" value={cliente.cnae || 'No registrado'} />
               </div>
-              {(cliente.telefonos || []).length > 0 && (
-                <Section title="Teléfonos" icon={Phone}>
-                  {cliente.telefonos.map((t: string, i: number) => (
-                    <span key={i} className="text-sm font-mono bg-[#f8f7fa] px-3 py-1.5 rounded-lg">{t}</span>
-                  ))}
-                </Section>
-              )}
+              {(() => {
+                const phones = (cliente.telefonos_v2?.length > 0)
+                  ? cliente.telefonos_v2
+                  : (cliente.telefonos || []).map((t: string) => ({ num: t, tipo: 'extraido', origen: 'bot' }));
+                if (phones.length === 0) return null;
+                return (
+                  <Section title="Teléfonos" icon={Phone}>
+                    {phones.map((t: any, i: number) => (
+                      <span key={i} className={`text-sm font-mono px-3 py-1.5 rounded-lg flex items-center gap-1.5 ${
+                        t.tipo === 'contacto' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' :
+                        t.tipo === 'agregado' ? 'bg-purple-50 text-purple-800 border border-purple-200' :
+                        'bg-[#f8f7fa]'
+                      }`}>
+                        {t.num}
+                        {t.tipo === 'contacto' && <span className="text-[8px] bg-emerald-200 text-emerald-800 rounded px-1 font-sans">Principal</span>}
+                        {t.tipo === 'agregado' && <span className="text-[8px] bg-purple-200 text-purple-800 rounded px-1 font-sans">Agregado</span>}
+                      </span>
+                    ))}
+                  </Section>
+                );
+              })()}
               {(cliente.emails || []).length > 0 && (
                 <Section title="Emails" icon={Mail}>
                   {cliente.emails.map((e: string, i: number) => (

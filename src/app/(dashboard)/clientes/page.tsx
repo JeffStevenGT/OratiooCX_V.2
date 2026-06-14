@@ -4,7 +4,8 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import {
   Search, Loader2, RefreshCw, ArrowUpDown, ChevronDown, ChevronUp,
   Download, FileSpreadsheet, Users, Building, User, Smartphone, PhoneOff, Gift,
@@ -21,6 +22,10 @@ type Cliente = {
   whatsapp_opt_in?: boolean; whatsapp_numero?: string; alertas_fidelizacion?: boolean;
 };
 
+import Skeleton, { TableSkeleton } from '@/components/shared/Skeleton';
+import Tooltip from '@/components/shared/Tooltip';
+import { toast } from '@/components/shared/Toast';
+
 const PAGE_SIZES = [10, 25, 50, 100];
 
 const VARIANTES = [
@@ -31,34 +36,55 @@ const VARIANTES = [
 ];
 
 export default function ClientesPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [sortKey, setSortKey] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [cimaFilter, setCimaFilter] = useState<string | null>(null);
-  const [renoveFilter, setRenoveFilter] = useState<string | null>(null);
-  const [variantesActivas, setVariantesActivas] = useState<string[]>([]);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [search, setSearch] = useState(searchParams.get('q') || '');
+  const [sortKey, setSortKey] = useState<string | null>(searchParams.get('sort') || null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>((searchParams.get('dir') as 'asc' | 'desc') || 'asc');
+  const [cimaFilter, setCimaFilter] = useState<string | null>(searchParams.get('cima') || null);
+  const [renoveFilter, setRenoveFilter] = useState<string | null>(searchParams.get('renove') || null);
+  const [variantesActivas, setVariantesActivas] = useState<string[]>(searchParams.get('vars')?.split(',').filter(Boolean) || []);
+  const [dateFrom, setDateFrom] = useState(searchParams.get('from') || '');
+  const [dateTo, setDateTo] = useState(searchParams.get('to') || '');
   const [expandido, setExpandido] = useState<string | null>(null);
   const [editingTipo, setEditingTipo] = useState<string | null>(null);
   const [deteccionesCache, setDeteccionesCache] = useState<Record<string, any[]>>({});
   const [timelineCache, setTimelineCache] = useState<Record<string, any[]>>({});
   const [loadingDetecciones, setLoadingDetecciones] = useState(false);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(10);
 
   const fetchClientes = async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/clientes');
+      if (!res.ok) throw new Error('Error al cargar');
       setClientes(await res.json());
-    } catch { /* */ }
+    } catch {
+      toast.error('Error al cargar clientes');
+    }
     setLoading(false);
   };
 
   useEffect(() => { fetchClientes(); }, []);
+
+  // Sync filters to URL
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (search) params.set('q', search);
+    if (cimaFilter) params.set('cima', cimaFilter);
+    if (renoveFilter) params.set('renove', renoveFilter);
+    if (variantesActivas.length > 0) params.set('vars', variantesActivas.join(','));
+    if (dateFrom) params.set('from', dateFrom);
+    if (dateTo) params.set('to', dateTo);
+    if (sortKey) params.set('sort', sortKey);
+    if (sortDir !== 'asc') params.set('dir', sortDir);
+    const qs = params.toString();
+    router.replace(qs ? `?${qs}` : window.location.pathname, { scroll: false });
+  }, [search, cimaFilter, renoveFilter, variantesActivas, dateFrom, dateTo, sortKey, sortDir, router]);
 
   // Reset page on filter change
   useEffect(() => { setPage(1); }, [search, cimaFilter, renoveFilter, variantesActivas, dateFrom, dateTo]);
@@ -116,12 +142,17 @@ export default function ClientesPage() {
   };
 
   const updateTipo = async (id: string, tipo: string) => {
-    await fetch(`/api/clientes/${id}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo_persona: tipo }),
-    });
-    setClientes(prev => prev.map(c => c.id_cliente === id ? { ...c, tipo_persona: tipo } : c));
-    setEditingTipo(null);
+    try {
+      await fetch(`/api/clientes/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo_persona: tipo }),
+      });
+      setClientes(prev => prev.map(c => c.id_cliente === id ? { ...c, tipo_persona: tipo } : c));
+      setEditingTipo(null);
+      toast.success(`Tipo cambiado a ${tipo === 'natural' ? 'Natural' : tipo === 'autonomo' ? 'Autónomo' : 'Empresa'}`);
+    } catch {
+      toast.error('Error al actualizar tipo');
+    }
   };
 
   const exportCSV = () => {
@@ -148,7 +179,7 @@ export default function ClientesPage() {
   };
 
   const SortHeader = ({ label, sk }: { label: string; sk: string }) => (
-    <th className="table-header px-3 py-2.5 cursor-pointer hover:text-[#1a1030] select-none" onClick={() => toggleSort(sk)}>
+    <th className="table-header px-3 py-2.5 cursor-pointer hover:text-gray-900 dark:text-white select-none" onClick={() => toggleSort(sk)}>
       <div className="flex items-center gap-1">
         {label}
         {sortKey === sk ? (sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)
@@ -175,8 +206,8 @@ export default function ClientesPage() {
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-[#1a1030]">Clientes</h1>
-          <p className="text-sm text-[#7c757c] mt-0.5">{filtered.length} resultados</p>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><Users size={22} className="text-[#0a6ea9]" />Clientes</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{filtered.length} resultados</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={fetchClientes} disabled={loading}
@@ -198,15 +229,15 @@ export default function ClientesPage() {
       <div className="card-sm flex flex-wrap items-center gap-3">
         {/* Search */}
         <div className="relative flex-1 min-w-[200px]">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#b8b0b8]" />
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
           <input placeholder="Buscar DNI, nombre o línea..." value={search}
             onChange={e => setSearch(e.target.value)}
-            className="border border-[#e0e0f0] rounded-lg pl-8 pr-3 py-1.5 text-xs w-full focus:outline-none focus:ring-1 focus:ring-[#0a6ea9]/30" />
+            className="border border-gray-200 dark:border-gray-600 rounded-lg pl-8 pr-3 py-1.5 text-xs w-full focus:outline-none focus:ring-1 focus:ring-[#0a6ea9]/30" />
         </div>
 
         {/* CIMA */}
         <select value={cimaFilter || ''} onChange={e => setCimaFilter(e.target.value || null)}
-          className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white">
+          className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-xs bg-white">
           <option value="">CIMA: Todos</option>
           <option value="SI">CIMA: SI</option>
           <option value="NO">CIMA: NO</option>
@@ -214,7 +245,7 @@ export default function ClientesPage() {
 
         {/* Renove */}
         <select value={renoveFilter || ''} onChange={e => setRenoveFilter(e.target.value || null)}
-          className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs bg-white">
+          className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-xs bg-white">
           <option value="">Renove: Todos</option>
           <option value="SI">Renove: SI</option>
           <option value="NO">Renove: NO</option>
@@ -229,48 +260,75 @@ export default function ClientesPage() {
               className={`text-[10px] px-2 py-1 rounded-full border transition-colors ${
                 variantesActivas.includes(v.key)
                   ? 'bg-[#0a6ea9] text-white border-[#0a6ea9]'
-                  : 'bg-white text-[#7c757c] border-[#e0e0f0] hover:border-[#b8b0b8]'
+                  : 'bg-white text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:border-[#b8b0b8]'
               }`}>{v.label}</button>
           ))}
         </div>
 
         {/* Dates */}
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-          className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs" />
-        <span className="text-xs text-[#7c757c]">a</span>
+          className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-xs" />
+        <span className="text-xs text-gray-500 dark:text-gray-400">a</span>
         <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-          className="border border-[#e0e0f0] rounded-lg px-2.5 py-1.5 text-xs" />
+          className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-xs" />
       </div>
 
       {/* Table */}
       <div className="card !p-0 overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center py-16"><Loader2 size={28} className="animate-spin text-[#b8b0b8]" /></div>
+          <TableSkeleton rows={pageSize} cols={9} />
         ) : paged.length === 0 ? (
-          <div className="text-center py-16">
-            <Users size={48} className="text-[#b8b0b8] mx-auto mb-3" />
-            <p className="text-sm text-[#7c757c]">No se encontraron clientes</p>
+          <div className="text-center py-16 px-4">
+            <Users size={48} className="text-gray-400 dark:text-gray-500 mx-auto mb-3" />
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">No se encontraron clientes</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
+              {clientes.length === 0
+                ? 'Sube un Excel con DNIs para empezar a analizar'
+                : 'Ajusta los filtros para ver más resultados'}
+            </p>
+            {clientes.length === 0 && (
+              <a href="/admin/documentos" className="btn-primary inline-flex items-center gap-1.5 text-xs px-4 py-2">
+                <FileSpreadsheet size={14} />
+                Subir DNIs
+              </a>
+            )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto hidden md:block">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-[#e8dce6] bg-[#f8f7fa]">
+                <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                   <SortHeader label="DNI" sk="dni" />
                   <SortHeader label="Nombre" sk="nombre" />
-                  <SortHeader label="CIMA" sk="cima" />
+                  <th className="table-header px-3 py-2.5 cursor-pointer hover:text-gray-900 dark:text-white select-none" onClick={() => toggleSort('cima')}>
+                    <Tooltip text="Cliente Imagina Móvil Avanzado — plan premium de Orange">
+                      <div className="flex items-center gap-1">
+                        CIMA
+                        {sortKey === 'cima' ? (sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)
+                          : <ArrowUpDown size={11} className="opacity-30" />}
+                      </div>
+                    </Tooltip>
+                  </th>
                   <SortHeader label="Línea" sk="linea_principal" />
                   <SortHeader label="Paquete" sk="paquete" />
                   <SortHeader label="Renove" sk="tiene_renove" />
-                  <SortHeader label="Variante" sk="renove_variante" />
+                  <th className="table-header px-3 py-2.5 cursor-pointer hover:text-gray-900 dark:text-white select-none" onClick={() => toggleSort('renove_variante')}>
+                    <Tooltip text="Tipo de renovación disponible. Máx descuento = mayor prioridad comercial">
+                      <div className="flex items-center gap-1">
+                        Variante
+                        {sortKey === 'renove_variante' ? (sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)
+                          : <ArrowUpDown size={11} className="opacity-30" />}
+                      </div>
+                    </Tooltip>
+                  </th>
                   <SortHeader label="Fecha" sk="fecha" />
                   <SortHeader label="Hora" sk="hora" />
                 </tr>
               </thead>
               <tbody>
                 {paged.map(c => (
-                  <>
-                    <tr key={c.id_cliente}
+                  <Fragment key={c.id_cliente}>
+                    <tr
                       onClick={async () => {
                         const nuevo = expandido === c.id_cliente ? null : c.id_cliente;
                         setExpandido(nuevo);
@@ -289,7 +347,7 @@ export default function ClientesPage() {
                           setLoadingDetecciones(false);
                         }
                       }}
-                      className={`border-b border-[#f0f0f8] hover:bg-[#f8f7fa] cursor-pointer transition-colors ${
+                      className={`border-b border-[#f0f0f8] hover:bg-gray-50 dark:bg-gray-800 cursor-pointer transition-colors ${
                         expandido === c.id_cliente ? 'bg-[#f5f0fa]' : ''
                       }`}>
                       <td className="py-2.5 px-3 text-xs font-mono font-medium">{c.dni}</td>
@@ -309,31 +367,31 @@ export default function ClientesPage() {
                       <td className="py-2.5 px-3 text-xs max-w-[160px] truncate" title={c.renove_variante}>
                         {c.renove_variante}
                       </td>
-                      <td className="py-2.5 px-3 text-xs text-[#7c757c]">{c.fecha}</td>
-                      <td className="py-2.5 px-3 text-xs text-[#7c757c]">{c.hora}</td>
+                      <td className="py-2.5 px-3 text-xs text-gray-500 dark:text-gray-400">{c.fecha}</td>
+                      <td className="py-2.5 px-3 text-xs text-gray-500 dark:text-gray-400">{c.hora}</td>
                     </tr>
 
                     {/* Expandible */}
                     {expandido === c.id_cliente && (
                       <tr key={`exp-${c.id_cliente}`}>
-                        <td colSpan={9} className="bg-[#faf8fc] border-b border-[#e8dce6] p-0">
+                        <td colSpan={9} className="bg-[#faf8fc] border-b border-gray-200 dark:border-gray-700 p-0">
                           <div className="px-6 py-4 space-y-4">
                             {/* Cabecera */}
                             <div className="flex items-center justify-between">
                               <div>
-                                <p className="text-sm font-semibold text-[#1a1030]">{c.nombre}</p>
-                                <p className="text-xs text-[#7c757c]">{c.tipo_documento} {c.dni}</p>
+                                <p className="text-sm font-semibold text-gray-900 dark:text-white">{c.nombre}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">{c.tipo_documento} {c.dni}</p>
                               </div>
                               {/* Tipo persona editable */}
                               <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-[#7c757c]">Tipo:</span>
+                                <span className="text-[10px] text-gray-500 dark:text-gray-400">Tipo:</span>
                                 {editingTipo === c.id_cliente ? (
                                   <select
                                     value={c.tipo_persona}
                                     onChange={e => updateTipo(c.id_cliente, e.target.value)}
                                     onBlur={() => setEditingTipo(null)}
                                     autoFocus
-                                    className="border border-[#e0e0f0] rounded-lg px-2 py-1 text-[10px] bg-white">
+                                    className="border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 text-[10px] bg-white">
                                     <option value="natural">Natural</option>
                                     <option value="autonomo">Autónomo</option>
                                     <option value="empresa">Empresa</option>
@@ -351,9 +409,9 @@ export default function ClientesPage() {
                               </div>
 
                               {/* WhatsApp Consent */}
-                              <div className="bg-[#f8f7fa] rounded-lg p-3 space-y-2" onClick={e => e.stopPropagation()}>
+                              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-2" onClick={e => e.stopPropagation()}>
                                 <div className="flex items-center justify-between">
-                                  <span className="text-[10px] text-[#7c757c]">Alertas de Fidelización</span>
+                                  <span className="text-[10px] text-gray-500 dark:text-gray-400">Alertas de Fidelización</span>
                                   <button onClick={async () => {
                                     await fetch(`/api/clientes/${c.id_cliente}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alertas_fidelizacion: !c.alertas_fidelizacion }) });
                                     fetchClientes();
@@ -369,7 +427,7 @@ export default function ClientesPage() {
                                         const clientesCopy = [...paged.map(x => x.id_cliente === c.id_cliente ? { ...x, whatsapp_numero: v } : x)];
                                         await fetch(`/api/clientes/${c.id_cliente}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ whatsapp_numero: v }) });
                                       }}
-                                      placeholder="+34 6XX XXX XXX" className="border border-[#e0e0f0] rounded-lg px-2 py-1 text-[10px] w-40"
+                                      placeholder="+34 6XX XXX XXX" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 text-[10px] w-40"
                                     />
                                     <span className={`text-[10px] ${c.whatsapp_opt_in ? 'text-emerald-600' : 'text-amber-600'}`}>
                                       {c.whatsapp_opt_in ? '✅ Confirmado' : '⏳ Pendiente'}
@@ -390,22 +448,22 @@ export default function ClientesPage() {
                             {/* Líneas */}
                             {c.lineas && c.lineas.length > 0 && (
                               <div>
-                                <h4 className="text-xs font-semibold text-[#1a1030] mb-2">
+                                <h4 className="text-xs font-semibold text-gray-900 dark:text-white mb-2">
                                   Líneas ({c.lineas.length})
                                 </h4>
-                                <div className="overflow-x-auto max-h-72 overflow-y-auto rounded-lg border border-[#e8dce6]">
+                                <div className="overflow-x-auto max-h-72 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700">
                                   <table className="w-full text-[10px]">
                                     <thead className="sticky top-0 bg-[#f0edf5]">
                                       <tr>
-                                        <th className="px-2.5 py-1.5 text-left font-medium text-[#7c757c]">Número</th>
-                                        <th className="px-2.5 py-1.5 text-left font-medium text-[#7c757c]">CIMA</th>
-                                        <th className="px-2.5 py-1.5 text-left font-medium text-[#7c757c]">Estado</th>
-                                        <th className="px-2.5 py-1.5 text-left font-medium text-[#7c757c]">Consumo</th>
-                                        <th className="px-2.5 py-1.5 text-left font-medium text-[#7c757c]">Permanencia</th>
-                                        <th className="px-2.5 py-1.5 text-left font-medium text-[#7c757c]">VAP</th>
-                                        <th className="px-2.5 py-1.5 text-left font-medium text-[#7c757c]">Renove</th>
-                                        <th className="px-2.5 py-1.5 text-left font-medium text-[#7c757c]">TV</th>
-                                        <th className="px-2.5 py-1.5 text-left font-medium text-[#7c757c]">Activo desde</th>
+                                        <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">Número</th>
+                                        <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">CIMA</th>
+                                        <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">Estado</th>
+                                        <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">Consumo</th>
+                                        <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">Permanencia</th>
+                                        <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">VAP</th>
+                                        <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">Renove</th>
+                                        <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">TV</th>
+                                        <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">Activo desde</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -452,10 +510,10 @@ export default function ClientesPage() {
                               </p>
                             )}
 
-                            {/* Cambios detectados */}
-                            {deteccionesCache[c.id_cliente] && deteccionesCache[c.id_cliente].length > 0 && (
+                            {/* Cambios detectados / Análisis inicial */}
+                            {deteccionesCache[c.id_cliente] && deteccionesCache[c.id_cliente].length > 0 ? (
                               <div>
-                                <h4 className="text-xs font-semibold text-[#1a1030] mb-2 flex items-center gap-1">
+                                <h4 className="text-xs font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-1">
                                   <TrendingUp size={12} className="text-[#0a6ea9]" />
                                   Cambios detectados ({deteccionesCache[c.id_cliente].length})
                                 </h4>
@@ -465,16 +523,27 @@ export default function ClientesPage() {
                                   ))}
                                 </div>
                               </div>
+                            ) : deteccionesCache[c.id_cliente] && deteccionesCache[c.id_cliente].length === 0 && (
+                              <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3">
+                                <p className="text-xs text-emerald-700 flex items-center gap-1.5">
+                                  <TrendingUp size={12} />
+                                  <strong>Análisis inicial</strong> — se registraron{' '}
+                                  {c.lineas?.length || 0} líneas
+                                </p>
+                                <p className="text-[10px] text-emerald-600/70 mt-1">
+                                  La próxima extracción detectará cambios reales.
+                                </p>
+                              </div>
                             )}
 
                             {/* Timeline */}
                             {timelineCache[c.id_cliente] && timelineCache[c.id_cliente].length > 0 && (
                               <div>
-                                <h4 className="text-xs font-semibold text-[#1a1030] mb-2">📋 Historial</h4>
+                                <h4 className="text-xs font-semibold text-gray-900 dark:text-white mb-2">📋 Historial</h4>
                                 <div className="space-y-1 max-h-48 overflow-y-auto">
                                   {timelineCache[c.id_cliente].slice(0, 15).map((h: any, i: number) => (
                                     <div key={i} className="flex items-start gap-2 text-[10px]">
-                                      <span className="text-[#b8b0b8] whitespace-nowrap">
+                                      <span className="text-gray-400 dark:text-gray-500 whitespace-nowrap">
                                         {h.created_at ? new Date(h.created_at).toLocaleString('es-PE') : '—'}
                                       </span>
                                       <span className={`rounded px-1.5 py-0.5 text-[8px] font-medium ${
@@ -483,7 +552,7 @@ export default function ClientesPage() {
                                         h.tipo === 'asignacion' ? 'bg-emerald-100 text-emerald-700' :
                                         'bg-gray-100 text-gray-600'
                                       }`}>{h.tipo}</span>
-                                      <span className="text-[#7c757c]">{h.descripcion}</span>
+                                      <span className="text-gray-500 dark:text-gray-400">{h.descripcion}</span>
                                     </div>
                                   ))}
                                 </div>
@@ -493,7 +562,7 @@ export default function ClientesPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -501,26 +570,64 @@ export default function ClientesPage() {
         )}
       </div>
 
+      {/* Mobile card view */}
+      {!loading && paged.length > 0 && (
+        <div className="card !p-0 md:hidden">
+          {paged.map(c => (
+            <div key={c.id_cliente} className="border-b border-gray-200 dark:border-gray-700 last:border-0 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-sm font-bold text-gray-900 dark:text-white">{c.dni}</span>
+                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                  c.cima === 'SI' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
+                }`}>{c.cima === 'SI' ? 'CIMA' : 'NO CIMA'}</span>
+              </div>
+              <p className="text-sm text-gray-900 dark:text-white font-medium">{c.nombre}</p>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div><span className="text-gray-400 dark:text-gray-500">Línea:</span> <span className="text-gray-500 dark:text-gray-400">{c.linea_principal}</span></div>
+                <div><span className="text-gray-400 dark:text-gray-500">Paquete:</span> <span className="text-gray-500 dark:text-gray-400">{c.paquete}</span></div>
+                <div><span className="text-gray-400 dark:text-gray-500">Renove:</span> <span className={c.tiene_renove === 'SI' ? 'text-blue-600 font-medium' : 'text-gray-500 dark:text-gray-400'}>{c.tiene_renove === 'SI' ? 'SI' : 'NO'}</span></div>
+                <div><span className="text-gray-400 dark:text-gray-500">Variante:</span> <span className="text-[10px] text-gray-500 dark:text-gray-400">{c.renove_variante?.slice(0, 25) || '—'}</span></div>
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500">
+                <span>{c.fecha} {c.hora}</span>
+                <span className={`px-1.5 py-0.5 rounded text-[9px] ${
+                  c.tipo_persona === 'empresa' ? 'bg-purple-100 text-purple-700' :
+                  c.tipo_persona === 'autonomo' ? 'bg-amber-100 text-amber-700' :
+                  'bg-blue-100 text-blue-700'
+                }`}>{c.tipo_persona === 'natural' ? 'Natural' : c.tipo_persona === 'autonomo' ? 'Autónomo' : 'Empresa'}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-[#7c757c]">Mostrar</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">Mostrar</span>
             <select value={pageSize} onChange={e => { setPageSize(+e.target.value); setPage(1); }}
-              className="border border-[#e0e0f0] rounded-lg px-2 py-1 text-xs bg-white">
+              className="border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 text-xs bg-white">
               {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
-            <span className="text-xs text-[#7c757c]">de {filtered.length}</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">de {filtered.length}</span>
           </div>
           <div className="flex items-center gap-1">
             <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
               className="btn-outline text-xs px-3 py-1 disabled:opacity-30">Anterior</button>
-            <span className="text-xs text-[#7c757c] px-2">{page} / {totalPages}</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400 px-2">{page} / {totalPages}</span>
             <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
               className="btn-outline text-xs px-3 py-1 disabled:opacity-30">Siguiente</button>
           </div>
         </div>
       )}
+      {/* ── Info ── */}
+      <div className="mt-8 card-sm bg-gray-50 dark:bg-gray-800 dark:bg-[#1e1a2a] border-dashed border-gray-200 dark:border-gray-600 dark:border-[#2a1f3a]">
+        <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">💡 ¿Cómo funciona?</h3>
+        <ul className="space-y-1 text-[11px] text-gray-500 dark:text-gray-400">
+          <li>· Los datos provienen del bot que analiza Pangea Orange. Filtra por CIMA, Renove, fechas y variantes. Exporta a CSV/Excel.</li>
+        </ul>
+      </div>
     </div>
   );
 }

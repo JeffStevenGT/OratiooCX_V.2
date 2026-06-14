@@ -51,6 +51,137 @@ def _extraer_texto(page: Page, selector: str) -> str:
         return "N/A"
 
 
+def _extraer_estado_linea(bloque) -> list:
+    """Extrae los tags de estado de línea con su color para detectar activos vs inactivos.
+    Args:
+        bloque: Playwright locator del div.client-tariff-flex
+    Retorna: lista de dicts {texto, color, activo}
+    """
+    estados = []
+    try:
+        tags = bloque.locator("ocs-line-status span.label")
+        for k in range(tags.count()):
+            tag = tags.nth(k)
+            texto = tag.inner_text().strip()
+            if not texto or texto == "Estado de línea:":
+                continue
+            # Leer estilo inline para detectar color
+            style = tag.get_attribute("style") or ""
+            color = tag.evaluate("el => getComputedStyle(el).backgroundColor") or ""
+            # Detectar si está activo (no gris): rojo, naranja, amarillo, etc.
+            activo = "grey" not in color.lower() and "rgb(204" not in color
+            estados.append({"texto": texto, "color": color, "activo": activo})
+    except Exception:
+        pass
+    return estados
+
+
+def _extraer_detalle_linea(bloque, label_texto: str) -> str:
+    """Extrae un dato específico de ocs-line-details por texto del label.
+    Busca dentro de los divs client-tariff-section-data-info el que contenga
+    el texto dado (ej: 'Permanencia', 'Consumo', 'Venta a Plazos') y devuelve
+    el texto del strong asociado."""
+    try:
+        detalles = bloque.locator("ocs-line-details .client-tariff-section-data-info")
+        for k in range(detalles.count()):
+            detalle = detalles.nth(k)
+            texto_completo = detalle.inner_text()
+            if label_texto.lower() in texto_completo.lower():
+                strong = detalle.locator("strong")
+                if strong.count() > 0:
+                    return strong.first.inner_text().strip()
+                return texto_completo.strip()
+    except Exception:
+        pass
+    return "N/A"
+
+
+def parsear_fecha_permanencia(texto: str) -> str:
+    """Intenta extraer una fecha del texto de permanencia.
+    Formatos: 'Vence 15/09/2026', '15/09/2026', '2026-09-15', etc.
+    Retorna string ISO o '' si no se puede parsear."""
+    import re
+    if not texto or texto == "N/A":
+        return ""
+    # dd/mm/yyyy o dd-mm-yyyy
+    m = re.search(r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})', texto)
+    if m:
+        dia, mes, anio = m.group(1).zfill(2), m.group(2).zfill(2), m.group(3)
+        return f"{anio}-{mes}-{dia}"
+    # yyyy-mm-dd
+    m = re.search(r'(\d{4})-(\d{2})-(\d{2})', texto)
+    if m:
+        return m.group(0)
+    return ""
+
+
+def _extraer_campanas_tab(bloque, page, tab_nombre: str) -> list:
+    """Hace click en una pestaña de campañas y extrae las cards visibles.
+    Args:
+        bloque: Playwright locator del div.client-tariff-flex
+        page: instancia de página Playwright
+        tab_nombre: texto del botón de la pestaña (ej: 'Cambio Tarifa', 'Bonos y Descuen.', 'SVA')
+    Retorna: lista de dicts {tipo, texto}
+    """
+    campanas = []
+    try:
+        tab_bar = bloque.locator(".client-tariff-section-navs")
+        if tab_bar.count() == 0:
+            return campanas
+        tab_btn = tab_bar.locator(f"button:has-text('{tab_nombre}')")
+        if tab_btn.count() == 0:
+            return campanas
+        # Click en la pestaña
+        try:
+            tab_btn.first.click(timeout=4000)
+            page.wait_for_timeout(400)
+        except Exception:
+            try:
+                tab_btn.first.click(force=True, timeout=4000)
+                page.wait_for_timeout(400)
+            except Exception:
+                return campanas
+        # Extraer cards visibles
+        cards_container = bloque.locator(".client-tariff-section-cards")
+        if cards_container.count() > 0:
+            cards = cards_container.locator(".card-tariff-minimal")
+            for c_idx in range(cards.count()):
+                card = cards.nth(c_idx)
+                try:
+                    label_el = card.locator(".card-tariff-label strong")
+                    tipo = label_el.first.inner_text().strip() if label_el.count() > 0 else tab_nombre
+                    info_el = card.locator(".card-tariff-info-text")
+                    texto = info_el.first.inner_text().strip() if info_el.count() > 0 else card.inner_text().strip()
+                    campanas.append({"tipo": tipo, "texto": texto})
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return campanas
+
+
+def _extraer_campanas_otros(bloque) -> list:
+    """Extrae campañas del dropdown 'Otros' sin hacer click (cards ya visibles con label 'Otros')."""
+    campanas = []
+    try:
+        cards_container = bloque.locator(".client-tariff-section-cards")
+        if cards_container.count() == 0:
+            return campanas
+        cards = cards_container.locator(".card-tariff-minimal")
+        for c_idx in range(cards.count()):
+            card = cards.nth(c_idx)
+            try:
+                label_el = card.locator(".card-tariff-label strong")
+                tipo = label_el.first.inner_text().strip() if label_el.count() > 0 else ""
+                info_el = card.locator(".card-tariff-info-text")
+                texto = info_el.first.inner_text().strip() if info_el.count() > 0 else ""
+                if tipo and texto and tipo.lower() not in ("renove", "destacadas"):
+                    campanas.append({"tipo": tipo, "texto": texto})
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return campanas
 # ── Login ──────────────────────────────────────────
 
 def manejar_cookies_flexible(page: Page):
@@ -324,6 +455,12 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     "es_principal": False,
                     "etiquetas": [],
                     "activo_desde": "N/A",
+                    "producto": "N/A",
+                    "estado_linea": [],
+                    "permanencia": "N/A",
+                    "consumo": "N/A",
+                    "venta_plazos": "N/A",
+                    "campanas_extra": [],
                     "_modal_abierto": True,  # Modal sigue abierto, escribir siguiente DNI
                 }]
 
@@ -346,6 +483,12 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     "es_principal": False,
                     "etiquetas": [],
                     "activo_desde": "N/A",
+                    "producto": "N/A",
+                    "estado_linea": [],
+                    "permanencia": "N/A",
+                    "consumo": "N/A",
+                    "venta_plazos": "N/A",
+                    "campanas_extra": [],
                     "_modal_abierto": True,
                 }]
 
@@ -393,6 +536,12 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     "es_principal": False,
                     "etiquetas": [],
                     "activo_desde": "N/A",
+                    "producto": "N/A",
+                    "estado_linea": [],
+                    "permanencia": "N/A",
+                    "consumo": "N/A",
+                    "venta_plazos": "N/A",
+                    "campanas_extra": [],
                     "_modal_abierto": True,
                 }]
 
@@ -437,6 +586,25 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     # Extraer fecha activo desde
                     match_fecha = re.search(r'Activo desde\s+(\d{2}/\d{2}/\d{4})', texto_completo)
                     activo_desde = match_fecha.group(1) if match_fecha else "N/A"
+
+                    # ── NUEVO: Extraer producto de la línea ──
+                    producto_linea = "N/A"
+                    try:
+                        strongs = bloque.locator(".line-section strong")
+                        if strongs.count() >= 2:
+                            producto_linea = strongs.nth(1).inner_text().strip()
+                    except Exception:
+                        pass
+
+                    # ── NUEVO: Extraer estado de línea con colores ──
+                    estado_linea = _extraer_estado_linea(bloque)
+
+                    # ── NUEVO: Extraer permanencia, consumo, VAPs ──
+                    permanencia = _extraer_detalle_linea(bloque, "Permanencia")
+                    # Extraer fecha exacta de permanencia para scoring
+                    permanencia_fecha = parsear_fecha_permanencia(permanencia)
+                    consumo = _extraer_detalle_linea(bloque, "Consumo")
+                    venta_plazos = _extraer_detalle_linea(bloque, "Venta a Plazos")
 
                     # ── Detectar Renove: click en PESTAÑA "Renove" (no en tarjeta!) ──
                     tiene_rm = False
@@ -534,6 +702,35 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     if renove_timeout:
                         raise Exception(f"Renove no cargó para {numero}")
 
+                    # ── NUEVO: Extraer campañas adicionales (Cambio Tarifa, Bonos, SVA, Otros) ──
+                    campanas_extra = []
+                    # Solo si la barra de tabs existe
+                    try:
+                        tab_bar_camp = bloque.locator(".client-tariff-section-navs")
+                        if tab_bar_camp.count() > 0:
+                            # Cambio Tarifa (NO click en Renove de nuevo, ya lo extrajimos)
+                            ct = _extraer_campanas_tab(bloque, page, "Cambio Tarifa")
+                            campanas_extra.extend(ct)
+                            # SVA
+                            sva = _extraer_campanas_tab(bloque, page, "SVA")
+                            campanas_extra.extend(sva)
+                            # Bonos y Descuen.
+                            bonos = _extraer_campanas_tab(bloque, page, "Bonos y Descuen.")
+                            campanas_extra.extend(bonos)
+                            # Volver a Renove para no romper la iteración
+                            try:
+                                renove_back = tab_bar_camp.locator("button:has-text('Renove')")
+                                if renove_back.count() > 0:
+                                    renove_back.first.click(force=True, timeout=2000)
+                                    page.wait_for_timeout(200)
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+                    # Campañas 'Otros' (ya visibles sin hacer click)
+                    otros = _extraer_campanas_otros(bloque)
+                    campanas_extra.extend(otros)
+
                     lineas_finales.append({
                         "DNI": dni,
                         "Nombre": nombre,
@@ -549,6 +746,14 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                         "es_principal": es_principal,
                         "etiquetas": etiquetas,
                         "activo_desde": activo_desde,
+                        # NUEVOS CAMPOS
+                        "producto": producto_linea,
+                        "estado_linea": estado_linea,
+                        "permanencia": permanencia,
+                        "permanencia_fecha": permanencia_fecha,
+                        "consumo": consumo,
+                        "venta_plazos": venta_plazos,
+                        "campanas_extra": campanas_extra,
                     })
 
                 # Siguiente página de líneas

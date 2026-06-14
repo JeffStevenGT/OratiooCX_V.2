@@ -68,17 +68,31 @@ export async function listAgents() {
   return vpbxFetch('/agent');
 }
 
+/** Contar cambios de estado de agentes */
+export async function countAgentStatusChanges(filters: {
+  start: number;
+  end: number;
+  statuses?: string[];
+  agents?: string[];
+}) {
+  return vpbxFetch('/agent/statuscount', {
+    method: 'POST',
+    body: JSON.stringify(filters),
+  });
+}
+
 /** Obtener historial de cambios de estado de agentes */
 export async function getAgentStatusChanges(filters: {
   start: number;
   end: number;
   statuses?: string[];
   agents?: string[];
+  offset?: number;
   limit?: number;
 }) {
-  return vpbxFetch('/agent/statuscount', {
+  return vpbxFetch('/agent/status', {
     method: 'POST',
-    body: JSON.stringify(filters),
+    body: JSON.stringify({ ...filters, offset: filters.offset ?? 0, limit: filters.limit ?? 50 }),
   });
 }
 
@@ -91,6 +105,58 @@ export async function getRecordingUrl(callId: string): Promise<string | null> {
 /** Relacionar el callId del click2call con el cdr real */
 export async function getCdrFromC2c(callId: string) {
   return vpbxFetch(`/cdrc2c/${callId}`);
+}
+
+/** Actualizar variables personalizadas en un CDR (var1-var5, máx 255 chars c/u) */
+export async function updateCallVars(callId: string, vars: {
+  var1?: string;
+  var2?: string;
+  var3?: string;
+  var4?: string;
+  var5?: string;
+}) {
+  return vpbxFetch(`/cdr/${callId}/updatevars`, {
+    method: 'POST',
+    body: JSON.stringify(vars),
+  });
+}
+
+/** Obtener tiempo medio de espera de una cola */
+export async function getQueueWaitTime(queueNumber: number) {
+  return vpbxFetch(`/queue/${queueNumber}/waittime`);
+}
+
+/** Obtener llamadas en cola en vivo */
+export async function getQueueState(queueNumber: number) {
+  return vpbxFetch(`/queue/${queueNumber}/state`);
+}
+
+/** Listar todas las extensiones */
+export async function listExtensions() {
+  return vpbxFetch('/extension');
+}
+
+/** Obtener datos de una extensión */
+export async function getExtension(extensionId: string) {
+  return vpbxFetch(`/extension/${extensionId}`);
+}
+
+/** Buscar id de extensión por username */
+export async function findExtensionByUsername(username: string) {
+  return vpbxFetch(`/extension/findbyusername/${username}`);
+}
+
+/** Actualizar outboundId de una extensión */
+export async function updateExtension(extensionId: string, outboundId: string) {
+  return vpbxFetch(`/extension/${extensionId}`, {
+    method: 'POST',
+    body: JSON.stringify({ outboundId }),
+  });
+}
+
+/** Obtener voces TTS disponibles (Amazon Polly) */
+export async function getVoices() {
+  return vpbxFetch('/voiceengine');
 }
 
 // ── Helpers para el CRM ──

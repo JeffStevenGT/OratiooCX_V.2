@@ -9,6 +9,12 @@ body {
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* Dark mode */
+.dark body {
+  background: #121218;
+  color: #e4e4e7;
+}
+
 /* Animaciones */
 @keyframes fade-in {
   from { opacity: 0; }
@@ -22,39 +28,158 @@ body {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .animate-fade-in { animation: fade-in 0.3s ease-out; }
 .animate-scale-in { animation: scale-in 0.3s ease-out; }
 .animate-slide-up { animation: slide-up 0.3s ease-out; }
+.animate-slide-left { animation: slide-in-left 0.25s ease-out; }
+.animate-page-enter { animation: page-enter 0.35s ease-out; }
+
+/* Stagger animation for grid children */
+.animate-stagger > * {
+  opacity: 0;
+  animation: slide-up 0.4s ease-out forwards;
+}
+.animate-stagger > *:nth-child(1) { animation-delay: 0.05s; }
+.animate-stagger > *:nth-child(2) { animation-delay: 0.10s; }
+.animate-stagger > *:nth-child(3) { animation-delay: 0.15s; }
+.animate-stagger > *:nth-child(4) { animation-delay: 0.20s; }
+.animate-stagger > *:nth-child(5) { animation-delay: 0.25s; }
+.animate-stagger > *:nth-child(6) { animation-delay: 0.30s; }
+.animate-stagger > *:nth-child(7) { animation-delay: 0.35s; }
+.animate-stagger > *:nth-child(8) { animation-delay: 0.40s; }
+.animate-stagger > *:nth-child(n+9) { animation-delay: 0.45s; }
 
 /* Cards */
 .card {
-  @apply bg-white rounded-xl border border-[#e0e0f0] p-6 shadow-sm;
+  @apply bg-white rounded-xl border border-[#e0e0f0] p-6 shadow-sm transition-all duration-200 hover:shadow-md;
 }
+.dark .card { @apply bg-[#1e1e2a] border-[#2a2a3a] hover:shadow-lg hover:shadow-purple-900/10; }
 .card-sm {
-  @apply bg-white rounded-xl border border-[#e0e0f0] p-4 shadow-sm;
+  @apply bg-white rounded-xl border border-[#e0e0f0] p-4 shadow-sm transition-all duration-200 hover:shadow-md;
 }
+.dark .card-sm { @apply bg-[#1e1e2a] border-[#2a2a3a] hover:shadow-lg hover:shadow-purple-900/10; }
 
 /* Botones */
 .btn-primary {
-  @apply bg-[#0a6ea9] hover:bg-[#085d8f] text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors;
+  @apply bg-[#0a6ea9] hover:bg-[#085d8f] active:scale-[0.97] text-white rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150;
 }
 .btn-purple {
-  @apply bg-[#481163] hover:bg-[#5d1a7a] text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors;
+  @apply bg-[#481163] hover:bg-[#5d1a7a] active:scale-[0.97] text-white rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150;
 }
 .btn-outline {
-  @apply border border-[#e0e0f0] text-[#1a1030] rounded-lg px-4 py-2 text-sm font-medium transition-colors hover:bg-[#f0f0f8];
+  @apply border border-[#e0e0f0] text-[#1a1030] rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 hover:bg-[#f0f0f8] active:scale-[0.97];
 }
+.dark .btn-outline { @apply border-[#2a2a3a] text-[#e4e4e7] hover:bg-[#2a2a3a]; }
 .btn-danger {
-  @apply bg-red-500 hover:bg-red-600 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors;
+  @apply bg-red-500 hover:bg-red-600 active:scale-[0.97] text-white rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150;
 }
 .btn-success {
-  @apply bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-medium transition-colors;
+  @apply bg-emerald-500 hover:bg-emerald-600 active:scale-[0.97] text-white rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150;
 }
 
 /* Tablas */
 .table-header {
-  @apply text-[10px] font-semibold text-[#7c757c] uppercase tracking-wider;
+  @apply text-[10px] font-semibold text-gray-500 uppercase tracking-wider bg-gray-50;
+}
+.dark .table-header {
+  @apply text-gray-400 bg-gray-800;
 }
 .table-cell {
-  @apply py-2.5 px-3 text-sm;
+  @apply py-2.5 px-3 text-sm text-gray-900;
 }
+.dark .table-cell {
+  @apply text-gray-200;
+}
+
+/* Tabla completa en dark mode */
+.dark table {
+  @apply bg-gray-900;
+}
+.dark tbody tr {
+  @apply border-gray-800;
+}
+.dark tbody tr:hover {
+  @apply bg-gray-800;
+}
+.dark thead {
+  @apply bg-gray-800;
+}
+
+/* Table row hover transitions */
+tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+/* Focus ring for inputs */
+input:focus, select:focus, textarea:focus {
+  @apply outline-none ring-2 ring-[#0a6ea9]/20 border-[#0a6ea9]/40;
+}
+
+/* ── Dark Mode Universal Fixes ── */
+
+/* Inputs, selects, textareas */
+.dark input[type="text"],
+.dark input[type="email"],
+.dark input[type="number"],
+.dark input[type="date"],
+.dark input[type="month"],
+.dark input[type="time"],
+.dark input[type="search"],
+.dark input[type="password"],
+.dark select,
+.dark textarea {
+  @apply bg-gray-800 border-gray-600 text-gray-200;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  @apply text-gray-500;
+}
+
+/* Cards con tintes de color — fondo opaco → dark semitransparente */
+.dark .bg-emerald-50 { @apply bg-emerald-900/20; }
+.dark .bg-blue-50 { @apply bg-blue-900/20; }
+.dark .bg-amber-50 { @apply bg-amber-900/20; }
+.dark .bg-red-50 { @apply bg-red-900/20; }
+.dark .bg-purple-50 { @apply bg-purple-900/20; }
+.dark .bg-indigo-50 { @apply bg-indigo-900/20; }
+.dark .bg-orange-50 { @apply bg-orange-900/20; }
+.dark .bg-teal-50 { @apply bg-teal-900/20; }
+.dark .bg-slate-50 { @apply bg-gray-800; }
+.dark .bg-gray-50 { @apply bg-gray-800; }
+
+/* Texto de color sobre fondos tintados — claro → tono pastel */
+.dark .text-emerald-700 { @apply text-emerald-400; }
+.dark .text-blue-700 { @apply text-blue-400; }
+.dark .text-amber-700 { @apply text-amber-400; }
+.dark .text-red-700 { @apply text-red-400; }
+.dark .text-purple-700 { @apply text-purple-400; }
+.dark .text-indigo-700 { @apply text-indigo-400; }
+.dark .text-orange-700 { @apply text-orange-400; }
+.dark .text-teal-700 { @apply text-teal-400; }
+
+/* Bordes de color */
+.dark .border-emerald-200 { @apply border-emerald-800; }
+.dark .border-blue-200 { @apply border-blue-800; }
+.dark .border-amber-200 { @apply border-amber-800; }
+.dark .border-red-200 { @apply border-red-800; }
+.dark .border-purple-200 { @apply border-purple-800; }
+.dark .border-indigo-200 { @apply border-indigo-800; }
+.dark .border-orange-200 { @apply border-orange-800; }
+
+/* Cards blancas genéricas */
+.dark .bg-white { @apply bg-gray-900; }
+
+/* Botones outline */
+.dark .btn-outline {
+  @apply border-gray-600 text-gray-300 hover:bg-gray-800;
+}
+
+/* Dark mode text overrides — managed by Tailwind dark: classes now */

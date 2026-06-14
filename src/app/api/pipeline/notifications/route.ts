@@ -12,7 +12,7 @@ export async function GET(req: Request) {
     const userRol = searchParams.get('rol');
     if (!userId) return NextResponse.json({ error: 'Falta user_id' }, { status: 400 });
 
-    const proyectoId = 1;
+    const proyectoId = parseInt(searchParams.get('proyecto_id') || '1');
     const uid = parseInt(userId);
 
     const result: Record<string, number> = {
@@ -94,6 +94,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json(result);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error('[api]', e.message);
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }

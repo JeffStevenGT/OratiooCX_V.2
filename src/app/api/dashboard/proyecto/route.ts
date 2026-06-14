@@ -58,6 +58,7 @@ export async function GET(req: Request) {
       ventas: parseInt(pipeStats.ventas),
     });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error('[api]', e.message);
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 });
   }
 }
