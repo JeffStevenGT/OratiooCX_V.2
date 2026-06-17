@@ -45,7 +45,7 @@ export async function GET(req: Request) {
         send({ type: 'init', totalPendientes: parseInt(r.total) });
       } catch { /* silencioso */ }
 
-      // Polling cada 15 segundos — se limpia al desconectar
+      // Polling cada 30 segundos (reducido de 15s para aliviar BD)
       const interval = setInterval(async () => {
         if (closed) { clearInterval(interval); return; }
         try {
@@ -57,7 +57,7 @@ export async function GET(req: Request) {
           if (nuevos > 0) send({ type: 'nuevos_leads', count: nuevos });
           lastCheck = Date.now();
         } catch { if (closed) clearInterval(interval); }
-      }, 15000);
+      }, 30000);
 
       // Doble seguridad: limpiar al cerrar el stream también
       const cleanup = () => { closed = true; clearInterval(interval); };

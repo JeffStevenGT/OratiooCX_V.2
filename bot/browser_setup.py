@@ -53,6 +53,27 @@ def crear_contexto_espana(playwright, proxy_config: dict = None):
 
     context = browser.new_context(**context_args)
 
+    # ── BLINDAJE PERMANENTE: inyectar CSS anti-Herramientas en CADA pagina ──
+    # Este script corre ANTES de que la pagina cargue, sobrevive a navegaciones.
+    context.add_init_script("""
+        const antiToolsStyle = document.createElement('style');
+        antiToolsStyle.id = 'oratioo-blindaje-tools';
+        antiToolsStyle.textContent = `
+            .o-comp__tools-menu-container,
+            div[ng-show="toolsCtrl.showMenu"] {
+                display: none !important;
+                visibility: hidden !important;
+                pointer-events: none !important;
+            }
+            .o-comp__tools__select,
+            button.o-comp__form-select--bold {
+                pointer-events: none !important;
+            }
+        `;
+        (document.head || document.documentElement).appendChild(antiToolsStyle);
+    """)
+    print("  [Browser] Blindaje anti-Herramientas instalado (init_script)")
+
     return browser, context
 
 

@@ -456,12 +456,15 @@ export default function ClientesPage() {
                                     <thead className="sticky top-0 bg-[#f0edf5]">
                                       <tr>
                                         <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">Número</th>
+                                        <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">Producto</th>
+                                        <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">Paquete</th>
                                         <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">CIMA</th>
                                         <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">Estado</th>
                                         <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">Consumo</th>
                                         <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">Permanencia</th>
                                         <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">VAP</th>
                                         <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">Renove</th>
+                                        <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">Campañas</th>
                                         <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">TV</th>
                                         <th className="px-2.5 py-1.5 text-left font-medium text-gray-500 dark:text-gray-400">Activo desde</th>
                                       </tr>
@@ -470,6 +473,8 @@ export default function ClientesPage() {
                                       {c.lineas.map((l: any, i: number) => (
                                         <tr key={i} className="border-t border-[#f0f0f8] hover:bg-[#f5ebf3]/30">
                                           <td className="px-2.5 py-1.5 font-mono font-medium">{l.numero || 'N/A'}</td>
+                                          <td className="px-2.5 py-1.5 text-[9px] max-w-[100px] truncate" title={l.producto || ''}>{l.producto || '—'}</td>
+                                          <td className="px-2.5 py-1.5 text-[9px] max-w-[120px] truncate" title={l.paquete_tariff || ''}>{l.paquete_tariff || '—'}</td>
                                           <td className="px-2.5 py-1.5">
                                             {l.es_cima ? <span className="text-emerald-600 font-medium">SI</span> : 'NO'}
                                           </td>
@@ -492,6 +497,16 @@ export default function ClientesPage() {
                                                   : 'SI'}
                                               </span>
                                             ) : 'NO'}
+                                          </td>
+                                          <td className="px-2.5 py-1.5 text-[9px]">
+                                            {l.campanas_extra && l.campanas_extra.length > 0 ? (
+                                              <span
+                                                className="text-purple-600 cursor-help"
+                                                title={l.campanas_extra.map((c: any) => `${c.tipo}: ${c.texto}`).join(' | ')}
+                                              >
+                                                {l.campanas_extra.length}
+                                              </span>
+                                            ) : '—'}
                                           </td>
                                           <td className="px-2.5 py-1.5">{l.tiene_tv ? 'SI' : 'NO'}</td>
                                           <td className="px-2.5 py-1.5">{l.activo_desde || '—'}</td>

@@ -81,15 +81,20 @@ export async function GET(req: Request) {
       GROUP BY hora ORDER BY hora
     `, [proyectoId, desde, hasta]);
 
-    // ── 4. Cinturones por asesor ──
+    // ── 4. Cinturones por asesor (batch para evitar N+1) ──
     const cinturones: any[] = [];
-    for (const a of porAsesor) {
-      const { rows: [c] } = await pool.query(
-        'SELECT * FROM cinturon_actual($1, $2)',
-        [a.id, mes]
+    const cinturonIds = porAsesor.map((a: any) => a.id);
+    if (cinturonIds.length > 0) {
+      // Usar UNNEST para llamar la función en batch (1 query en vez de N)
+      const { rows: cints } = await pool.query(
+        `SELECT u.id as asesor_id, c.*
+         FROM unnest($1::int[]) AS uid
+         JOIN usuarios u ON u.id = uid
+         CROSS JOIN LATERAL cinturon_actual(u.id, $2) c`,
+        [cinturonIds, mes]
       );
-      if (c) {
-        cinturones.push({ asesor_id: a.id, ...c });
+      for (const c of cints) {
+        if (c) cinturones.push(c);
       }
     }
 
@@ -150,6 +155,35 @@ export async function GET(req: Request) {
       no_interesa: a.no_interesa,
       no_contesta: a.no_contesta,
     }));
+
+    // ── 6.5 Metas y progreso ──
+    const diasEnMes = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    const diaActual = new Date().getDate();
+    const diasRestantes = Math.max(1, diasEnMes - diaActual);
+
+    // Obtener metas del mes para todos los asesores del ranking
+    const asesorIds = ranking.map(r => r.id);
+    let metas: Record<number, number> = {};
+    if (asesorIds.length > 0) {
+      const { rows: metasRows } = await pool.query(
+        `SELECT usuario_id, valor_objetivo FROM metas WHERE proyecto_id = $1 AND usuario_id = ANY($2) AND mes = $3`,
+        [proyectoId, asesorIds, mes]
+      );
+      for (const m of metasRows) {
+        metas[m.usuario_id] = m.valor_objetivo;
+      }
+    }
+
+    // Enriquecer ranking con info de meta
+    for (const r of ranking) {
+      const meta = metas[r.id] || 0;
+      r.meta = meta;
+      r.porcentaje_meta = meta > 0 ? Math.round((r.ventas / meta) * 100) : 0;
+      r.media_necesaria = meta > 0 ? Math.max(0, Math.ceil((meta - r.ventas) / diasRestantes)) : 0;
+      r.estado_meta = meta > 0
+        ? (r.porcentaje_meta >= 100 ? 'cumplida' : r.porcentaje_meta >= 75 ? 'en_camino' : 'retrasado')
+        : 'sin_meta';
+    }
 
     // ── 7. Tendencias (últimos 7 vs 7 anteriores) ──
     const hoy = new Date();

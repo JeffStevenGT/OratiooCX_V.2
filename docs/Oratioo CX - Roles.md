@@ -204,6 +204,7 @@ Mismas funcionalidades que asesor.
 - Ver todas las estadísticas y exportar datos
 - **Gestionar VPBX:** asignar extensiones SIP a operadores desde la pagina `/vpbx`
 - Ver estado de agentes VPBX en tiempo real
+- **Crear anuncios/comunicados** para su equipo o todos los roles
 
 ### Lo que NO puede hacer
 - Crear o eliminar usuarios
@@ -322,6 +323,7 @@ Mismas funcionalidades que asesor.
 - Gestionar proyectos (crear, editar)
 - **Gestionar VPBX:** acceso completo a `/vpbx` para asignar extensiones y monitorear agentes
 - Ver estado de agentes VPBX en tiempo real
+- **Crear y gestionar anuncios/comunicados** para toda la organización
 
 ### Lo que NO puede hacer
 - Modificar infraestructura técnica (proxies, máquinas, servidores)
@@ -364,6 +366,7 @@ Mismas funcionalidades que asesor.
 - Tramitar documentos (verificar y activar)
 - Revertir ventas a estados anteriores
 - Ver historial de tramitaciones
+- **Crear anuncios/comunicados**
 
 ### Lo que NO puede hacer
 - Llamar a clientes
@@ -413,6 +416,7 @@ Mismas funcionalidades que asesor.
 - Asignar puntuación por criterio
 - Ver historial de evaluaciones propias
 - Ver resumen por asesor
+- **Crear anuncios/comunicados**
 
 ### Lo que NO puede hacer
 - Llamar a clientes
@@ -466,6 +470,7 @@ El rol de IT gestiona la infraestructura técnica: proxies, máquinas, credencia
 Acceso completo a todas las páginas del sistema, incluyendo VPBX.
 
 ### Lo que PUEDE hacer (TODO)
+- **Crear y gestionar anuncios/comunicados**
 - CRUD completo de proxies
 - CRUD completo de máquinas
 - CRUD completo de credenciales Pangea
@@ -492,6 +497,7 @@ El desarrollador tiene acceso sin restricciones a todo el sistema. Puede modific
 **Todas las páginas del sistema sin excepción.**
 
 ### Lo que PUEDE hacer (TODO)
+- **Crear y gestionar anuncios** (incluye cumpleanos automaticos)
 - Absolutamente todo lo que cualquier otro rol puede hacer
 - Ejecutar migraciones de base de datos
 - Acceder a endpoints internos sin restricciones

@@ -53,6 +53,7 @@ src/
 │   └── (dashboard)/                 # Rutas protegidas
 │       ├── layout.tsx               # Layout con Sidebar + ProjectSelector
 │       ├── admin/page.tsx           # Admin (it/desarrollador)
+│       │   └── admin/anuncios/page.tsx # Gestión de anuncios
 │       ├── agenda/page.tsx          # Agenda de leads
 │       ├── alertas/page.tsx         # Alertas y detecciones
 │       ├── asesor/page.tsx          # Vista de asesor
@@ -84,6 +85,7 @@ src/
 │       ├── FlipCard.tsx         # Card que gira al hacer click
 │       ├── Paginator.tsx        # Paginación unificada (Mostrar [10▼] de N)
 │       ├── Toast.tsx, StatCard.tsx
+│       ├── AnunciosModal.tsx     # Modal full-screen de anuncios al entrar al proyecto
 │       ├── ClipboardModal.tsx, NotificationBadge.tsx
 │       ├── OratiooLogo.tsx, ProjectSelector.tsx, WhatsAppChat.tsx
 │       ├── Skeleton.tsx, ThemeProvider.tsx
@@ -123,6 +125,10 @@ api/
 ├── internal/
 │   └── bot-sync/route.ts            # POST → guardar resultados + detectar cambios
 │
+├── anuncios/route.ts                  # CRUD anuncios (supervisor+)
+├── anuncios/no-leidos/route.ts        # GET anuncios no leídos por rol
+├── anuncios/marcar-leido/route.ts     # POST marcar como leídos
+├── anuncios/cumpleanos-auto/route.ts  # POST generar anuncio de cumpleaños
 ├── maquinas/route.ts                # CRUD máquinas + heartbeat PATCH
 ├── clientes/route.ts                # GET clientes con datos del bot
 ├── clientes/[id]/route.ts           # GET/PATCH cliente individual
@@ -241,6 +247,8 @@ api/
 | `detecciones` | Cambios detectados entre análisis |
 | `analisis_perdidos` | Leads cerrados como no_interesa/no_contesta |
 | `pausas` | Tracking de pausas: tipo, inicio, fin, duración |
+| `anuncios` | Anuncios/comunicados multi-rol con tipos y roles_visibles |
+| `anuncios_leidos` | Tracking de qué usuario leyó cada anuncio |
 | `fichajes` | Fichaje electrónico: entrada/salida (España RD-ley 8/2019) |
 | `cdr_vpbx` | Registro de llamadas VPBX |
 
@@ -305,6 +313,33 @@ R2_BUCKET_NAME=
 - **Power Dialer**: botón ⏸ en header → modal con tipos → pantalla completa bloqueante con timer
 - **LivePanel (supervisor)**: timer con color graduado (blanco→ámbar→naranja→rojo según tiempo)
 - **Sin límites automáticos**: el supervisor decide. Los colores son solo señal visual.
+
+## Sistema de Anuncios
+
+- **Tabla `anuncios`**: proyecto_id, titulo, mensaje, tipo (general/record_ventas/festividad/cambio_condiciones/cumpleanos), roles_visibles (text[]), creado_por, activo
+- **Tabla `anuncios_leidos`**: (anuncio_id, user_id) PK compuesta, leido_at
+- **API**: CRUD en `/api/anuncios` (POST requiere supervisor+), GET `/api/anuncios/no-leidos?proyecto_id=X` (filtrado por rol), POST `/api/anuncios/marcar-leido`
+- **Modal al entrar**: al hacer click en un proyecto desde `/inicio`, se muestra `AnunciosModal` con anuncios no leídos filtrados por el rol del usuario y `roles_visibles`
+- **Sin anuncios nuevos**: salta directo al dashboard sin molestar
+- **Admin**: página `/admin/anuncios` con formulario de creación (título, mensaje, tipo, selector de roles visibles) + lista con toggle activar/desactivar
+- **Cumpleaños automático**: cron job diario a las 00:05 AM (hora Perú) llama a `POST /api/anuncios/cumpleanos-auto` que busca usuarios con `fecha_nacimiento = hoy` y publica anuncio tipo `cumpleanos` visible para todos los roles
+
+## Cumpleaños
+
+- **Campo `fecha_nacimiento`** en tabla `usuarios` (date, nullable)
+- **Alta/edición**: campo date en formulario de creación y edición de usuarios
+- **API**: incluido en GET/POST/PATCH de `/api/usuarios`
+- **Auto-anuncio**: `POST /api/anuncios/cumpleanos-auto` se ejecuta diariamente vía cron. Si hay cumpleañeros, publica anuncio con nombres. Si no, no hace nada.
+- **Zona horaria**: el cron corre en `America/Lima` (GMT-5). El anuncio dura 24h, cubriendo tanto Perú como España.
+
+## Ranking con Metas
+
+- **`GET /api/dashboard/rendimiento`** devuelve:
+  - `ranking[]` — todos los asesores ordenados por ventas con posición, ventas, contactados, contactabilidad, efectividad, tasa_contestacion, ocupacion, wrap_up, calidad
+  - `porcentaje_meta` — % respecto a la meta mensual (de tabla `metas`)
+  - `media_necesaria` — ventas/día restantes para alcanzar la meta
+  - `estado_meta` — `cumplida` (100%+), `en_camino` (75%+), `retrasado` (<75%), `sin_meta`
+- **Cálculo**: usa la meta del mes actual (`metas.mes = 'YYYY-MM'`) para cada asesor, días restantes del mes
 
 ## Multi-proyecto
 

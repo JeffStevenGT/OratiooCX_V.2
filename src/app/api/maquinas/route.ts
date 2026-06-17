@@ -10,7 +10,7 @@ import { requireRole } from '@/lib/auth-roles';
 export async function GET() {
   try {
     const { rows } = await pool.query(
-      'SELECT * FROM maquinas ORDER BY nombre'
+      'SELECT id, nombre, ip, workers_max, workers_activos, estado, ultimo_heartbeat FROM maquinas ORDER BY nombre'
     );
     return NextResponse.json(rows);
   } catch (e: any) {

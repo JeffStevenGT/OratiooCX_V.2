@@ -1422,3 +1422,27 @@ equireRole() (antes p�blicos)
 | v5.1    | 2026-06-06 | Scoring contactabilidad (Yone), cinturones 4 niveles, abandono/reutilización, umbrales notificación |
 | v5.2    | 2026-06-10 | Pagina VPBX: gestion de extensiones + agentes. API extensions. Campo extension_vpbx en PATCH usuarios. Sidebar + middleware VPBX |
 | v5.3    | 2026-06-10 | Redis (rate limiting, webhook queue, cache). Sistema de pausas (BD + Power Dialer + LivePanel). Paginacion unificada. Sidebar v2 (acordeon, badges, jerarquia). Multi-proyecto: config dinamica, campos de lead por proyecto, logo, CRUD proyectos. Asignar Leads v3 (chips por jerarquia). Proyectos hardcodeados eliminados. Pipeline multi-proyecto |
+
+
+---
+
+## Nuevas Features (2026-06-17)
+
+### Sistema de Anuncios
+- Tablas anuncios + anuncios_leidos en PostgreSQL
+- API CRUD en /api/anuncios
+- Modal AnunciosModal al entrar al proyecto desde /inicio
+- Cron diario de cumpleanos a las 00:05 AM (America/Lima)
+- Tipos: general, record_ventas, festividad, cambio_condiciones, cumpleanos
+- Selector de roles visibles al crear anuncio
+- Pagina admin en /admin/anuncios
+
+### Cumpleanos
+- Campo fecha_nacimiento en usuarios
+- Cron diario genera anuncio tipo cumpleanos automaticamente
+- Cubre equipos Peru y Espana (anuncio dura 24h)
+
+### Ranking con Metas
+- Extiende GET /api/dashboard/rendimiento
+- Incluye porcentaje_meta, media_necesaria, estado_meta
+- Calcula desde tabla metas (meta mensual por asesor)

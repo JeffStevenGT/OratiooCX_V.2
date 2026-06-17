@@ -1153,3 +1153,43 @@ Si API no responde:
 | RD-ley 2/2024 | Triple verificación activo (login + JWT + API) | ✅ |
 | Implícito | Zona horaria local (rangos TIMESTAMPTZ) | ✅ |
 | Implícito | Offline resiliente (localStorage sync) | ✅ |
+
+
+---
+
+## Nuevas Tablas (2026-06-17)
+
+### anuncios
+| Columna | Tipo | Descripcion |
+|---|---|---|
+| id | SERIAL PK | |
+| proyecto_id | INTEGER FK | A que proyecto pertenece |
+| titulo | TEXT | Titulo del anuncio |
+| mensaje | TEXT | Contenido |
+| tipo | TEXT | general, record_ventas, festividad, cambio_condiciones, cumpleanos |
+| roles_visibles | TEXT[] | Roles que pueden verlo |
+| creado_por | INTEGER FK | Usuario que lo creo |
+| activo | BOOLEAN | Permite desactivar sin borrar |
+| created_at | TIMESTAMPTZ | |
+
+### anuncios_leidos
+| Columna | Tipo | Descripcion |
+|---|---|---|
+| anuncio_id | INTEGER FK | PK compuesta |
+| user_id | INTEGER FK | PK compuesta |
+| leido_at | TIMESTAMPTZ | Cuando lo leyo |
+
+### usuarios (nueva columna)
+- fecha_nacimiento DATE (nullable)
+
+## Nuevos Endpoints API (2026-06-17)
+
+| Metodo | Ruta | Descripcion |
+|---|---|---|
+| GET | /api/anuncios | Listar anuncios |
+| POST | /api/anuncios | Crear anuncio (supervisor+) |
+| PATCH | /api/anuncios | Actualizar anuncio |
+| GET | /api/anuncios/no-leidos | Anuncios no leidos para el usuario |
+| POST | /api/anuncios/marcar-leido | Marcar como leidos |
+| POST | /api/anuncios/cumpleanos-auto | Auto-generar anuncio de cumpleanos |
+| GET | /api/dashboard/rendimiento | Ahora incluye ranking con metas |

@@ -170,11 +170,19 @@ export async function POST(req: Request) {
       // Detectar cambios vs análisis anterior
       if (!esPrimeraExtraccion && datosViejos) {
         const cambios = detectarCambios(datosViejos, datos);
-        for (const c of cambios) {
+        if (cambios.length > 0) {
+          // INSERT batch: 1 query con múltiples VALUES en vez de N queries
+          const values: string[] = [];
+          const params: any[] = [];
+          let pi = 1;
+          for (const c of cambios) {
+            values.push(`($${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++})`);
+            params.push(id_cliente, pid, c.tipo, c.linea_numero || null, c.valor_anterior || null, c.valor_nuevo || null, JSON.stringify(c.datos_extra || {}));
+          }
           await client.query(
             `INSERT INTO detecciones (id_cliente, proyecto_id, tipo, linea_numero, valor_anterior, valor_nuevo, datos_extra)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [id_cliente, pid, c.tipo, c.linea_numero || null, c.valor_anterior || null, c.valor_nuevo || null, JSON.stringify(c.datos_extra || {})]
+             VALUES ${values.join(', ')}`,
+            params
           );
         }
       }

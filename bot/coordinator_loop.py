@@ -1,5 +1,5 @@
 """
-bot/coordinator_loop.py — Coordinator Daemon Multi-Worker (API-First)
+bot/coordinator_loop.py -- Coordinator Daemon Multi-Worker (API-First)
 ======================================================================
 Daemon que corre 24/7 y espera comandos del frontend.
 
@@ -18,9 +18,14 @@ USO:
 import os, sys, time, signal, subprocess, json, requests, socket
 from pathlib import Path
 from datetime import datetime
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
-load_dotenv(Path(__file__).parent.parent / '.env')
+# [!!] Buscar .env en CWD o raiz del proyecto
+_env_path = find_dotenv(usecwd=True)
+if not _env_path:
+    _env_path = str(Path(__file__).parent.parent / ".env")
+load_dotenv(_env_path)
+print(f"[COORDINATOR] .env cargado desde: {_env_path}")
 
 BACKEND_URL = os.getenv("BOT_API_URL", "http://localhost:3000")
 BOT_API_KEY = os.getenv("BOT_API_KEY", "oratioo-bot-internal-key")
@@ -28,9 +33,9 @@ BOT_DIR = Path(__file__).parent
 POLL_INTERVAL = 5  # segundos entre polls de comandos
 HEARTBEAT_INTERVAL = 30  # segundos entre heartbeats
 
-# ═══════════════════════════════════════════
+# ===========================================
 # API helpers
-# ═══════════════════════════════════════════
+# ===========================================
 _api_headers = {
     "Content-Type": "application/json",
     "x-bot-api-key": BOT_API_KEY,
@@ -51,9 +56,9 @@ def api_patch(path, data):
     except Exception:
         return False
 
-# ═══════════════════════════════════════════
+# ===========================================
 # Worker management
-# ═══════════════════════════════════════════
+# ===========================================
 processes: list[subprocess.Popen] = []
 
 def alive_count():
@@ -86,7 +91,7 @@ def rescue_stale_dnis(minutos: int = 5):
         if r.ok:
             rescatados = r.json().get("rescatados", 0)
             if rescatados > 0:
-                print(f"[COORDINATOR] 🔄 {rescatados} DNIs atascados rescatados → pendiente")
+                print(f"[COORDINATOR] 🔄 {rescatados} DNIs atascados rescatados -> pendiente")
         return r.ok
     except Exception as e:
         print(f"[COORDINATOR] Error rescatando DNIs: {e}")
@@ -100,12 +105,12 @@ def spawn_workers(count: int, machine_name: str):
     print(f"[COORDINATOR] Lanzando {count} worker(s)...")
 
     # Rescatar DNIs atascados del arranque anterior
-    rescue_stale_dnis(minutos=1)  # 1 min — solo los realmente zombies
+    rescue_stale_dnis(minutos=1)  # 1 min -- solo los realmente zombies
 
     # Obtener credenciales Pangea desde la API
     creds = fetch_credentials()
     if not creds:
-        print("[COORDINATOR] ⚠️ Sin credenciales en BD. Usando .env como fallback.")
+        print("[COORDINATOR] [!!]️ Sin credenciales en BD. Usando .env como fallback.")
         creds = [{"usuario": os.getenv("ORANGE_USER", ""), "password": os.getenv("ORANGE_PASS", "")}]
     print(f"[COORDINATOR] {len(creds)} credencial(es) disponibles")
 
@@ -117,7 +122,7 @@ def spawn_workers(count: int, machine_name: str):
              "--machine", machine_name,
              "--credential-user", c.get("usuario", ""),
              "--credential-pass", c.get("password", "")],
-            # No capture stdout — let workers print directly for debugging
+            # No capture stdout -- let workers print directly for debugging
         )
         processes.append(p)
         print(f"  Worker {i+1} PID {p.pid} (proxy #{i}, cred #{i % len(creds)})")
@@ -172,9 +177,9 @@ def restart_dead_workers(machine_name: str):
                  "--credential-pass", c.get("password", "")],
             )
 
-# ═══════════════════════════════════════════
+# ===========================================
 # Command polling (filtrado por máquina)
-# ═══════════════════════════════════════════
+# ===========================================
 def poll_commands(machine_name: str):
     """Solo comandos para esta máquina o '*'."""
     data = api_get(f"/api/bot/command?maquina={machine_name}")
@@ -198,9 +203,9 @@ def handle_command(cmd: dict, machine_name: str):
 
     return False
 
-# ═══════════════════════════════════════════
+# ===========================================
 # Heartbeat
-# ═══════════════════════════════════════════
+# ===========================================
 _last_heartbeat = 0
 
 def send_heartbeat(machine_name: str):
@@ -215,9 +220,9 @@ def send_heartbeat(machine_name: str):
     })
 
 
-# ═══════════════════════════════════════════
+# ===========================================
 # Main daemon
-# ═══════════════════════════════════════════
+# ===========================================
 def main():
     # Nombre de máquina
     machine_name = socket.gethostname()
@@ -288,7 +293,7 @@ def main():
             # Rescatar DNIs atascados periódicamente (workers zombies)
             now_ts = time.time()
             if processes and now_ts - last_rescue > RESCUE_INTERVAL:
-                rescue_stale_dnis(minutos=30)  # 30 min — Pangea puede estar caída por horas
+                rescue_stale_dnis(minutos=30)  # 30 min -- Pangea puede estar caída por horas
                 last_rescue = now_ts
 
             # Poll comandos (solo los de esta máquina)

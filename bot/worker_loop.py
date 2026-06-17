@@ -1,13 +1,13 @@
 """
-bot/worker_loop.py — Worker Continuo para Producción
+bot/worker_loop.py -- Worker Continuo para Producción
 =====================================================
 Ejecuta 24/7 polling al backend de Next.js.
 
 Flujo:
-  1. GET /api/bot/next-dni → siguiente DNI pendiente
+  1. GET /api/bot/next-dni -> siguiente DNI pendiente
   2. Extrae datos estructurados de Orange
-  3. POST /api/internal/bot-sync → backend guarda
-  4. GET /api/bot/command → comandos del frontend (iniciar, pausar, detener)
+  3. POST /api/internal/bot-sync -> backend guarda
+  4. GET /api/bot/command -> comandos del frontend (iniciar, pausar, detener)
   5. Repite hasta que no haya DNIs o reciba comando de detener
 
 USO:
@@ -19,7 +19,7 @@ import sys, os, time, re, json, threading, requests
 from pathlib import Path
 from datetime import datetime
 from playwright.sync_api import sync_playwright
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 sys.path.insert(0, str(Path(__file__).parent))
 from browser_setup import crear_contexto_espana
@@ -28,16 +28,21 @@ from login import (
     abrir_nuevo_acto_comercial, manejar_cookies_flexible
 )
 
-load_dotenv(Path(__file__).parent.parent / '.env')
+# [!!] Buscar .env en CWD, bot/ o raiz del proyecto
+_env_path = find_dotenv(usecwd=True)
+if not _env_path:
+    _env_path = str(Path(__file__).parent.parent / ".env")
+load_dotenv(_env_path)
+print(f"[WORKER] .env cargado desde: {_env_path}")
 
 ORANGE_URL = "https://pangea.orange.es/"
 BACKEND_URL = os.getenv("BOT_API_URL", "http://localhost:3000")
 BOT_API_KEY = os.getenv("BOT_API_KEY", "oratioo-bot-internal-key")
 WATCHDOG_TIMEOUT = 40
 
-# ═══════════════════════════════════════════
+# ===========================================
 # WATCHDOG
-# ═══════════════════════════════════════════
+# ===========================================
 class WatchdogTimeout(Exception): pass
 
 class Watchdog:
@@ -62,9 +67,9 @@ class Watchdog:
         return self._timed_out
 
 
-# ═══════════════════════════════════════════
+# ===========================================
 # BACKEND API
-# ═══════════════════════════════════════════
+# ===========================================
 def api_get(path):
     r = requests.get(f"{BACKEND_URL}{path}", headers={"x-bot-api-key": BOT_API_KEY}, timeout=10)
     return r.json() if r.ok else None
@@ -111,9 +116,9 @@ def sync_result(id_cliente, datos, estado="completado"):
     return api_post("/api/internal/bot-sync", {"id_cliente": id_cliente, "datos": datos, "estado": estado})
 
 
-# ═══════════════════════════════════════════
+# ===========================================
 # EXTRACCIÓN
-# ═══════════════════════════════════════════
+# ===========================================
 def parse_estado_linea(texto):
     # Detecta estados activos (con color no-gris) desde el DOM
     return {"hotline":"Hotline" in texto, "suspendida":"Suspendida" in texto,
@@ -143,6 +148,8 @@ def extraer_datos_estructurados(page, dni):
     if not lineas_basicas: return {"estado":"error","error":"sin_datos"}
     primera = lineas_basicas[0]
     if primera.get("Nombre") == "NO ES CLIENTE": return {"estado":"no_cliente"}
+    if primera.get("Nombre") == "YA_PROCESADO" or primera.get("_skip"):
+        return {"estado":"ya_procesado", "dni_real": primera.get("DNI", dni)}
 
     header = {"nombre": primera.get("Nombre","N/A"), "dni": primera.get("DNI",dni),
               "direccion": primera.get("Direccion","N/A"), "paquete": primera.get("Paquete","N/A")}
@@ -156,6 +163,7 @@ def extraer_datos_estructurados(page, dni):
                  "es_principal": lb.get("es_principal",False), "activo_desde": lb.get("activo_desde","N/A"),
                  # NUEVOS CAMPOS desde login.py
                  "producto": lb.get("producto", "N/A"),
+                 "paquete_tariff": lb.get("Paquete", "N/A"),
                  "estado_detallado": lb.get("estado_linea", []),
                  "permanencia": lb.get("permanencia", "N/A"),
                  "consumo": lb.get("consumo", "N/A"),
@@ -187,9 +195,9 @@ def extraer_datos_estructurados(page, dni):
     return {"estado":"completado","header":header,"lineas":lineas_detalladas,"cima_global":cima_global}
 
 
-# ═══════════════════════════════════════════
+# ===========================================
 # LOGIN
-# ═══════════════════════════════════════════
+# ===========================================
 def login_loop(page, cred_user='', cred_pass='', dni_touch: str = None):
     max_reintentos = 10
     for intento in range(max_reintentos):
@@ -212,9 +220,9 @@ def login_loop(page, cred_user='', cred_pass='', dni_touch: str = None):
             time.sleep(60)
 
 
-# ═══════════════════════════════════════════
+# ===========================================
 # MAIN LOOP
-# ═══════════════════════════════════════════
+# ===========================================
 def cargar_proxies():
     """Carga todos los proxies desde proxies.txt (raíz del proyecto)."""
     # Buscar en raíz del proyecto (../proxies.txt) o en bot/proxies.txt
@@ -274,11 +282,11 @@ def main():
             print(f"[START] {len(proxies)} proxies cargados de {pf_path}")
             print(f"[START] Worker {worker_id or 0} usando proxy #{idx}: {proxy_conf['server']}")
         else:
-            print(f"[START] ⚠️ No se encontraron proxies en {pf_path}")
+            print(f"[START] [!!]️ No se encontraron proxies en {pf_path}")
 
     print(f"[START] Bot Orange - Backend: {BACKEND_URL}")
     print(f"[START] Máquina: {machine_name} | Worker ID: {worker_id or 0}")
-    print(f"[START] Proxy: {proxy_conf['server'] if proxy_conf else 'NINGUNO (⚠️ Orange no abre sin IP española)'}")
+    print(f"[START] Proxy: {proxy_conf['server'] if proxy_conf else 'NINGUNO ([!!]️ Orange no abre sin IP española)'}")
     print("[START] Ctrl+C para detener")
 
     pw = sync_playwright().start()
@@ -356,6 +364,37 @@ def main():
         # Touch: avisar al rescate que este DNI está siendo procesado
         touch_dni(id_cliente)
 
+        # -- LOG DETALLADO: estado de la pagina antes de procesar --
+        try:
+            current_url = page.url
+            current_title = page.title()
+            print(f"[DEBUG] Iniciando {dni} | URL: {current_url[:100]} | Title: {current_title[:80]}")
+            # Verificar que no estamos en pagina externa
+            if "pangea.orange.es" not in current_url:
+                print(f"[ALARMA] [!!] URL externa detectada ANTES de procesar {dni}: {current_url}")
+                print(f"[ALARMA] Intentando go_back()...")
+                try:
+                    page.go_back()
+                    page.wait_for_timeout(3000)
+                    print(f"[ALARMA] Nueva URL tras go_back(): {page.url}")
+                except Exception as e:
+                    print(f"[ALARMA] go_back() falló: {e}")
+            # Verificar herramientas no visibles (solo alarma si REALMENTE estan visibles)
+            try:
+                tools_menu = page.locator(".o-comp__tools-menu-container")
+                if tools_menu.count() > 0:
+                    is_visible = tools_menu.first.is_visible()
+                    if is_visible:
+                        print(f"[DEBUG] [!!] Menu Herramientas VISIBLE detectado - cerrando con Escape...")
+                        page.keyboard.press("Escape")
+                        page.wait_for_timeout(500)
+                    else:
+                        print(f"[DEBUG] Menu Herramientas en DOM pero oculto (blindaje OK)")
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"[DEBUG] (error menor en diagnostico: {e})")
+
         try:
             with Watchdog(f"dni-{dni}"):
                 datos = extraer_datos_estructurados(page, dni)
@@ -365,6 +404,12 @@ def main():
                 no_clientes += 1
                 sync_result(id_cliente, datos, "no_cliente")
                 print(f"  -> NO CLIENTE")
+                continue
+            if estado == "ya_procesado":
+                # Cliente ya procesado antes (busqueda por telefono encontro DNI existente)
+                no_clientes += 1
+                sync_result(id_cliente, datos, "no_cliente")
+                print(f"  -> YA PROCESADO (DNI={datos.get('dni_real', '?')})")
                 continue
             if estado == "error":
                 errores += 1

@@ -222,3 +222,12 @@
 - [ ] Fase 8 — Deploy y Produccion
 
 **Completado:** 7/8 fases (87.5%) | **Pendiente:** 1/8 fases (12.5%)
+
+## 2026-06-17 — Sprint: Comunicaciones + Cumpleanos + Ranking
+
+### Completado
+- [x] Sistema de anuncios/comunicados (tabla, API CRUD, modal, pagina admin)
+- [x] Cumpleanos (campo fecha_nacimiento en usuarios, cron diario, anuncio automatico)
+- [x] Ranking con metas (porcentaje_meta, media_necesaria, estado_meta en rendimiento)
+- [x] Mejoras del bot: blindaje anti-Herramientas, busqueda por telefono, deteccion PYME, Excel con TELEFONO_VOZ
+- [x] UI: columnas Producto, Paquete y Campanas en tabla de lineas de clientes

@@ -22,6 +22,7 @@ import {
 import { useProject } from "@/lib/project-context";
 import { toast } from "@/components/shared/Toast";
 import OratiooLogo from "@/components/shared/OratiooLogo";
+import AnunciosModal from "@/components/shared/AnunciosModal";
 
 type ProyectoCard = {
   id: number;
@@ -77,6 +78,7 @@ export default function InicioPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [userRole, setUserRole] = useState("");
+  const [modalProyecto, setModalProyecto] = useState<ProyectoCard | null>(null);
 
   const [showConfig, setShowConfig] = useState(false);
   const [adminProjects, setAdminProjects] = useState<ProyectoCard[]>([]);
@@ -120,24 +122,31 @@ export default function InicioPage() {
   }) => {
     const proy = ctxProjects.find((x) => x.id === p.id);
     if (proy) {
+      // Guardar proyecto en contexto y mostrar modal de anuncios
       setProyecto(proy);
-      fetch("/api/auth/session")
-        .then((r) => r.json())
-        .then((s) => {
-          const rol = s?.user?.role || "asesor";
-          const dest: Record<string, string> = {
-            jefe_area: "/jefe",
-            desarrollador: "/jefe",
-            supervisor: "/supervisor",
-            asesor: "/asesor",
-            back_office: "/backoffice",
-            it: "/admin",
-            auditor_calidad: "/calidad",
-          };
-          router.push(dest[rol] || "/inicio");
-        })
-        .catch(() => router.push("/inicio"));
+      setModalProyecto(proy);
     }
+  };
+
+  const onModalClose = () => {
+    setModalProyecto(null);
+    // Navegar al dashboard
+    fetch("/api/auth/session")
+      .then((r) => r.json())
+      .then((s) => {
+        const rol = s?.user?.role || "asesor";
+        const dest: Record<string, string> = {
+          jefe_area: "/jefe",
+          desarrollador: "/jefe",
+          supervisor: "/supervisor",
+          asesor: "/asesor",
+          back_office: "/backoffice",
+          it: "/admin",
+          auditor_calidad: "/calidad",
+        };
+        router.push(dest[rol] || "/inicio");
+      })
+      .catch(() => router.push("/inicio"));
   };
 
   const loadAdminProjects = async () => {
@@ -806,5 +815,14 @@ export default function InicioPage() {
         </div>
       )}
     </div>
+
+    {/* Modal de anuncios al entrar al proyecto */}
+    {modalProyecto && (
+      <AnunciosModal
+        proyectoId={modalProyecto.id}
+        onClose={onModalClose}
+      />
+    )}
+  </div>
   );
 }

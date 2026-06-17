@@ -10,7 +10,7 @@ import { UserPlus, Loader2, Shield, Edit, X, Check, Search, ChevronDown, Chevron
 import { TableSkeleton } from '@/components/shared/Skeleton';
 import { toast } from '@/components/shared/Toast';
 
-type Usuario = { id: number; email: string; nombre: string; rol: string; equipo: string | null; activo: boolean; supervisor_id: number | null; ultima_conexion: string | null };
+type Usuario = { id: number; email: string; nombre: string; rol: string; equipo: string | null; activo: boolean; supervisor_id: number | null; ultima_conexion: string | null; fecha_nacimiento: string | null };
 const ROLES = ['asesor', 'supervisor', 'jefe_area', 'back_office', 'it', 'auditor_calidad', 'desarrollador'];
 const EQUIPO_ORDER = ['Administración', 'España', 'Perú'];
 
@@ -24,7 +24,7 @@ export default function UsuariosPage() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set()); // "eq", "jefe-8", "sup-10"
 
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ email: '', nombre: '', password: '', rol: 'asesor', equipo: '', supervisor_id: '', jefe_id: '', equipos: [] as string[] });
+  const [form, setForm] = useState({ email: '', nombre: '', password: '', rol: 'asesor', equipo: '', supervisor_id: '', jefe_id: '', equipos: [] as string[], fecha_nacimiento: '' });
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Partial<Usuario> & { password?: string }>({});
@@ -67,8 +67,8 @@ export default function UsuariosPage() {
       }
       // it, back_office, auditor_calidad: equipo asignado al país
 
-      const r = await fetch('/api/usuarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: form.email, nombre: form.nombre, password: form.password, rol: form.rol, equipo, supervisor_id }) });
-      if (r.ok) { toast.success('Creado'); setShowForm(false); setForm({ email: '', nombre: '', password: '', rol: 'asesor', equipo: '', supervisor_id: '', jefe_id: '', equipos: [] }); fetchUsuarios(); }
+      const r = await fetch('/api/usuarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: form.email, nombre: form.nombre, password: form.password, rol: form.rol, equipo, supervisor_id, fecha_nacimiento: form.fecha_nacimiento || null }) });
+      if (r.ok) { toast.success('Creado'); setShowForm(false); setForm({ email: '', nombre: '', password: '', rol: 'asesor', equipo: '', supervisor_id: '', jefe_id: '', equipos: [], fecha_nacimiento: '' }); fetchUsuarios(); }
       else { const e = await r.json(); toast.error(e.error); }
     } catch { toast.error('Error'); }
     setSaving(false);
@@ -215,6 +215,9 @@ export default function UsuariosPage() {
             <input type="password" placeholder="Nueva clave" value={editForm.password || ''}
               onChange={e => setEditForm({ ...editForm, password: e.target.value })}
               className="border border-gray-200 dark:border-gray-600 dark:border-[#2a1f3a] dark:bg-[#121218] dark:text-white rounded px-2 py-1 text-[10px] w-24" />
+            <input type="date" value={editForm.fecha_nacimiento !== undefined ? (editForm.fecha_nacimiento || '') : (u.fecha_nacimiento || '')}
+              onChange={e => setEditForm({ ...editForm, fecha_nacimiento: e.target.value || null })}
+              className="border border-gray-200 dark:border-gray-600 dark:border-[#2a1f3a] dark:bg-[#121218] dark:text-white rounded px-2 py-1 text-[10px] w-28" />
           </div>
           <Actions u={u} />
         </div>
@@ -287,6 +290,11 @@ export default function UsuariosPage() {
             <div>
               <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-1">Contraseña</label>
               <input placeholder="Contraseña" type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
+                className="border border-gray-200 dark:border-gray-600 dark:border-[#2a1f3a] dark:bg-[#121218] dark:text-white rounded-lg px-3 py-1.5 text-xs w-full" />
+            </div>
+            <div>
+              <label className="text-[10px] text-gray-500 dark:text-gray-400 block mb-1">F. Nacimiento</label>
+              <input type="date" value={form.fecha_nacimiento} onChange={e => setForm({ ...form, fecha_nacimiento: e.target.value })}
                 className="border border-gray-200 dark:border-gray-600 dark:border-[#2a1f3a] dark:bg-[#121218] dark:text-white rounded-lg px-3 py-1.5 text-xs w-full" />
             </div>
           </div>
