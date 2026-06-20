@@ -25,8 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from browser_setup import crear_contexto_espana
 from login import (
     extraer_datos_cliente, realizar_login, seleccionar_marca_orange,
-    abrir_nuevo_acto_comercial, manejar_cookies_flexible, MaxSessionsError,
-    PangeaDownError
+    abrir_nuevo_acto_comercial, manejar_cookies_flexible
 )
 
 # [!!] Buscar .env en CWD, bot/ o raiz del proyecto
@@ -38,9 +37,7 @@ print(f"[WORKER] .env cargado desde: {_env_path}")
 
 ORANGE_URL = "https://pangea.orange.es/"
 BACKEND_URL = os.getenv("BOT_API_URL", "http://localhost:3000")
-BOT_API_KEY = os.getenv("BOT_API_KEY")
-if not BOT_API_KEY:
-    raise RuntimeError("[WORKER] [!!] CRÍTICO: BOT_API_KEY no definida en .env. El worker no puede arrancar sin clave de API.")
+BOT_API_KEY = os.getenv("BOT_API_KEY", "oratioo-bot-internal-key")
 WATCHDOG_TIMEOUT = 40
 
 # ===========================================
@@ -116,31 +113,7 @@ def check_command(machine_name: str = "localhost"):
     return result
 
 def sync_result(id_cliente, datos, estado="completado"):
-    """Sincroniza resultado al backend con 3 reintentos y backoff exponencial.
-
-    Si todos los reintentos fallan, marca el DNI como error_sync para
-    no dejarlo huérfano en estado en_progreso.
-    Retorna True si se sincronizó correctamente, False en caso contrario.
-    """
-    max_reintentos = 3
-    backoff_base = 2  # segundos
-
-    for intento in range(1, max_reintentos + 1):
-        if api_post("/api/internal/bot-sync", {"id_cliente": id_cliente, "datos": datos, "estado": estado}):
-            return True
-        # No esperamos tras el último intento fallido
-        if intento < max_reintentos:
-            espera = backoff_base ** intento  # 2, 4, 8 segundos
-            print(f"  [SYNC] Fallo {intento}/{max_reintentos}. Reintentando en {espera}s...")
-            time.sleep(espera)
-
-    # ── Todos los reintentos agotados: marcar como error_sync ──
-    print(f"  [SYNC] [!!] {max_reintentos} reintentos agotados para {id_cliente}. Marcando como error_sync...")
-    try:
-        api_post("/api/internal/bot-sync", {"id_cliente": id_cliente, "datos": datos, "estado": "error_sync"})
-    except Exception as e:
-        print(f"  [SYNC] [FATAL] No se pudo marcar error_sync: {e}")
-    return False
+    return api_post("/api/internal/bot-sync", {"id_cliente": id_cliente, "datos": datos, "estado": estado})
 
 
 # ===========================================
@@ -227,8 +200,7 @@ def extraer_datos_estructurados(page, dni):
 # ===========================================
 def login_loop(page, cred_user='', cred_pass='', dni_touch: str = None):
     max_reintentos = 10
-    intento = 0
-    while intento < max_reintentos:
+    for intento in range(max_reintentos):
         # Mantener vivo el DNI mientras reintentamos login
         if dni_touch:
             touch_dni(dni_touch)
@@ -240,34 +212,12 @@ def login_loop(page, cred_user='', cred_pass='', dni_touch: str = None):
             abrir_nuevo_acto_comercial(page)
             print(f"[LOGIN] OK (intento {intento+1})")
             return True
-        except MaxSessionsError:
-            # Maximo de sesiones: esperar 5 min y reintentar SIN LIMITE
-            print(f"[LOGIN] [!!] MAXIMO DE SESIONES. Esperando 5 minutos...")
-            if dni_touch:
-                touch_dni(dni_touch)
-            try:
-                page.goto(ORANGE_URL, timeout=30000)
-            except Exception:
-                pass
-            # Esperar 5 minutos (300s) en intervalos de 30s con touch
-            for _ in range(10):  # 10 * 30s = 5 min
-                time.sleep(30)
-                if dni_touch:
-                    touch_dni(dni_touch)
-            # No incrementar intento -> reintento infinito
-            continue
         except Exception as e:
-            intento += 1
-            print(f"[LOGIN] Fallo {intento}/{max_reintentos}: {e}")
-            if intento % 5 == 0:
-                print(f"[LOGIN] Reintentando...")
-            try:
-                page.goto(ORANGE_URL, timeout=30000)
-            except Exception:
-                pass
+            print(f"[LOGIN] Fallo {intento+1}: {e}")
+            if intento % 5 == 0: print(f"[LOGIN] Reintentando...")
+            try: page.goto(ORANGE_URL, timeout=30000)
+            except: pass
             time.sleep(60)
-    print(f"[LOGIN] [FATAL] {max_reintentos} reintentos agotados. Rindiendose.")
-    return False
 
 
 # ===========================================
@@ -305,9 +255,15 @@ def main():
         idx = sys.argv.index("--worker-id")
         worker_id = int(sys.argv[idx + 1])
 
-    # Credenciales Pangea (siempre desde variables de entorno — [SEGURIDAD])
+    # Credenciales Pangea (desde coordinator o .env)
     cred_user = os.getenv("ORANGE_USER", "")
     cred_pass = os.getenv("ORANGE_PASS", "")
+    if "--credential-user" in sys.argv:
+        idx = sys.argv.index("--credential-user")
+        cred_user = sys.argv[idx + 1]
+    if "--credential-pass" in sys.argv:
+        idx = sys.argv.index("--credential-pass")
+        cred_pass = sys.argv[idx + 1]
 
     # Nombre de máquina (para filtrar comandos)
     machine_name = "localhost"
@@ -349,8 +305,6 @@ def main():
         browser.close(); pw.stop(); return
 
     procesados = no_clientes = errores = sin_trabajo = 0
-    recycle_count = 0  # contador para reciclaje de navegador cada 50 DNIs
-    RECYCLE_EVERY = 50
     detenido = False
 
     while not detenido:
@@ -466,35 +420,8 @@ def main():
             if sync_result(id_cliente, datos):
                 print(f"  -> OK ({len(datos.get('lineas',[]))} lineas, CIMA={datos.get('cima_global')})")
                 procesados += 1
-                recycle_count += 1
-
-                # Reciclaje proactivo del navegador cada 50 DNIs
-                if recycle_count >= RECYCLE_EVERY:
-                    print(f"\n[RECYCLE] {recycle_count} DNIs procesados. Reciclando navegador...")
-                    recycle_count = 0
-                    try:
-                        page.close()
-                        context.close()
-                        browser.close()
-                        pw.stop()
-                    except Exception:
-                        pass
-                    time.sleep(5)  # breve pausa para liberar recursos
-                    pw = sync_playwright().start()
-                    browser, context = crear_contexto_espana(pw, proxy_config=proxy_conf)
-                    page = context.new_page()
-                    try:
-                        from playwright_stealth import stealth_sync
-                        stealth_sync(page)
-                    except Exception:
-                        pass
-                    if not login_loop(page, cred_user, cred_pass):
-                        detenido = True
-                        break
-                    print("[RECYCLE] Navegador reciclado OK\n")
             else:
-                # sync_result ya marcó el DNI como error_sync tras agotar reintentos
-                print(f"  -> ERROR de sincronización (DNI marcado como error_sync)")
+                print(f"  -> ERROR al sincronizar")
                 errores += 1
 
         except WatchdogTimeout:
@@ -507,35 +434,6 @@ def main():
                 pass
 
         except Exception as e:
-            # PangeaDownError: Pangea completamente caida -> pausa larga
-            if isinstance(e, PangeaDownError):
-                print(f"  -> [!!] PANGEA CAIDA: {e}")
-                print(f"  -> Pausando 1.5 horas...")
-                errores += 1
-                time.sleep(5400)
-                print(f"  -> Reanudando. Recreando navegador...")
-                try:
-                    browser.close()
-                    pw.stop()
-                except Exception:
-                    pass
-                try:
-                    pw = sync_playwright().start()
-                    browser, context = crear_contexto_espana(pw, proxy_config=proxy_conf)
-                    page = context.new_page()
-                    try:
-                        from playwright_stealth import stealth_sync
-                        stealth_sync(page)
-                    except Exception:
-                        pass
-                    if not login_loop(page, cred_user, cred_pass):
-                        detenido = True
-                        break
-                except Exception as recovery_err:
-                    print(f"  -> [FATAL] No se pudo recrear tras pausa: {recovery_err}")
-                    detenido = True
-                    break
-                continue
             print(f"  -> ERROR: {e}")
             errores += 1
             try:

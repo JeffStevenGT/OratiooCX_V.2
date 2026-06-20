@@ -26,29 +26,6 @@ class SessionExpiredError(Exception):
 class CriticalError(Exception):
     pass
 
-class MaxSessionsError(LoginError):
-    """Error especifico cuando se alcanza el maximo de sesiones en Pangea."""
-    pass
-
-class PangeaDownError(Exception):
-    """Pangea esta completamente caida (chrome-error, ERR_TIMED_OUT)."""
-    pass
-
-
-# -- Contador de Pangea congelada --------------------
-_frozen_count = 0
-_FROZEN_LIMIT = 12  # despues de 12 seguidos sin respuesta -> F5
-
-def _reset_frozen():
-    global _frozen_count
-    _frozen_count = 0
-
-def _increment_frozen() -> bool:
-    """Incrementa contador de congelamiento. Retorna True si alcanzo el limite."""
-    global _frozen_count
-    _frozen_count += 1
-    return _frozen_count >= _FROZEN_LIMIT
-
 
 # -- Helpers ----------------------------------------
 
@@ -205,54 +182,6 @@ def _extraer_campanas_otros(bloque) -> list:
     except Exception:
         pass
     return campanas
-
-
-def _detectar_no_cliente_explicito(page: Page, es_telefono: bool = False) -> bool:
-    """Verifica si Pangea muestra EXPLICITAMENTE que el cliente no existe.
-    Solo retorna True si el texto de error es visible (no ng-hide).
-    Para busqueda por telefono, verifica que el .msg-error este cerca
-    del campo telefono, no del campo DNI."""
-    textos_no_cliente = [
-        "No se han encontrado datos",
-        "No se han encontrado datos para este cliente",
-    ]
-    try:
-        # Buscar en TODOS los .msg-error visibles (no ng-hide)
-        msg_errors = page.locator(".msg-error")
-        for i in range(msg_errors.count()):
-            el = msg_errors.nth(i)
-            try:
-                if not el.is_visible():
-                    continue
-                texto = el.inner_text().strip()
-                for patron in textos_no_cliente:
-                    if patron in texto:
-                        # Si es busqueda por telefono, verificar ubicacion
-                        if es_telefono:
-                            try:
-                                padre = el.locator("..")
-                                msisdn_input = padre.locator("input[ng-model='locatorCtrl.inputMsisdn']")
-                                if msisdn_input.count() == 0:
-                                    continue  # es el .msg-error del DNI, no del telefono
-                            except Exception:
-                                pass
-                        return True
-            except Exception:
-                continue
-        # Tambien buscar spans con el texto (fuera de .msg-error)
-        for patron in textos_no_cliente:
-            spans = page.locator(f"span.txt:has-text('{patron}')")
-            for i in range(spans.count()):
-                try:
-                    if spans.nth(i).is_visible():
-                        return True
-                except Exception:
-                    continue
-    except Exception:
-        pass
-    return False
-
-
 # -- Login ------------------------------------------
 
 def manejar_cookies_flexible(page: Page):
@@ -266,22 +195,17 @@ def manejar_cookies_flexible(page: Page):
         pass
 
 
-def manejar_maximo_sesiones(page: Page) -> bool:
-    """Maneja el modal de 'maximo numero de sesiones'.
-    Retorna True si detecto y manejo maximo de sesiones."""
+def manejar_maximo_sesiones(page: Page):
+    """Maneja el modal de 'máximo número de sesiones'."""
     try:
-        texto_modal = page.get_by_text(
-            "ya ha alcanzado el numero maximo permitido de sesiones"
-        )
-        if texto_modal.is_visible(timeout=5000):
-            print("  [Login] [!!] MAXIMO DE SESIONES detectado. Cerrando sesiones viejas...")
+        if page.get_by_text(
+            "ya ha alcanzado el número máximo permitido de sesiones"
+        ).is_visible(timeout=5000):
             page.locator("button, input[type='submit']").first.click()
             page.wait_for_load_state("networkidle")
-            print("  [Login] Sesiones viejas cerradas.")
-            return True
+            print("  [Login] Sesión máxima cerrada")
     except Exception:
         pass
-    return False
 
 
 def realizar_login(page: Page, usuario: str = None, password: str = None):
@@ -307,9 +231,8 @@ def realizar_login(page: Page, usuario: str = None, password: str = None):
         # Click en botón de login
         page.click("#submit-button")
 
-        # Manejar posible modal de maximo de sesiones
-        if manejar_maximo_sesiones(page):
-            raise MaxSessionsError("Maximo de sesiones alcanzado")
+        # Manejar posible modal de máximo de sesiones
+        manejar_maximo_sesiones(page)
 
         # Esperar que aparezca el selector de marcas
         page.wait_for_selector(".brands", timeout=30000)
@@ -466,16 +389,10 @@ def _blindar_contra_tools_dropdown(page: Page):
 
 def _verificar_no_navego_fuera(page: Page, dni_actual: str = "") -> bool:
     """Verifica que seguimos en Pangea y no navegamos a una pagina externa.
-    Retorna True si todo OK, False si detecto navegacion externa.
-    Lanza PangeaDownError si detecta que Pangea esta caida (chrome-error)."""
+    Retorna True si todo OK, False si detecto navegacion externa."""
     try:
         url = page.url
         if "pangea.orange.es" not in url:
-            # Detectar Pangea caida (chrome-error://chromewebdata/)
-            if "chrome-error" in url or "chromewebdata" in url:
-                print(f"  [FATAL] [!!] PANGEA CAIDA detectada para DNI {dni_actual}!")
-                print(f"  [FATAL] URL: {url}")
-                raise PangeaDownError(f"Pangea no disponible (chrome-error): {url}")
             print(f"  [ALARMA] [!!] NAVEGACION FUERA DE PANGEA detectada para DNI {dni_actual}!")
             print(f"  [ALARMA] URL actual: {url}")
             # Intentar volver
@@ -487,8 +404,6 @@ def _verificar_no_navego_fuera(page: Page, dni_actual: str = "") -> bool:
                 print(f"  [ALARMA] No se pudo hacer go_back()")
             return False
         return True
-    except PangeaDownError:
-        raise
     except Exception:
         return True  # Si ni siquiera podemos leer la URL, asumimos OK para no frenar
 
@@ -633,10 +548,30 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
             except Exception:
                 pass
 
-            # === DETECTAR "NO ES CLIENTE" (SOLO SI PANGEA LO DICE EXPLICITAMENTE) ===
-            if _detectar_no_cliente_explicito(page, es_telefono):
-                _reset_frozen()
-                print(f"  [Extracción] [FAIL] {numero} NO ES CLIENTE (explicito)")
+            # === DETECTAR "NO ES CLIENTE" ===
+            no_cliente_selectores = [
+                "span.txt:has-text('No se han encontrado datos')",
+                "span.txt:has-text('No se han encontrado datos para este cliente')",
+                ".msg-error:has-text('No se han encontrado')",
+            ]
+            es_no_cliente = False
+            for sel in no_cliente_selectores:
+                try:
+                    # [!!] Usar :visible para no agarrar el .msg-error oculto (ng-hide)
+                    matches = page.locator(sel)
+                    for j in range(matches.count()):
+                        if matches.nth(j).is_visible():
+                            es_no_cliente = True
+                            break
+                    if es_no_cliente:
+                        break
+                except Exception:
+                    continue
+
+            if es_no_cliente:
+                print(f"  [Extracción] [FAIL] {numero} NO ES CLIENTE")
+                #  NO cerrar modal -- solo limpiar campo y escribir siguiente DNI
+                # El mensaje de error no bloquea el input
                 return [{
                     "DNI": numero,
                     "Nombre": "NO ES CLIENTE",
@@ -658,36 +593,36 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     "consumo": "N/A",
                     "venta_plazos": "N/A",
                     "campanas_extra": [],
-                    "_modal_abierto": True,
+                    "_modal_abierto": True,  # Modal sigue abierto, escribir siguiente DNI
                 }]
 
-            # === DETECTAR PANGEA CONGELADA (modal abierto SIN texto de error) ===
+            # SI EL MODAL SIGUE ABIERTO -> "no es cliente" (caso busqueda por telefono)
             try:
                 if btn_buscar.is_visible():
-                    # Modal abierto pero SIN texto explicito de no_cliente
-                    # -> Pangea no respondio (congelada)
-                    if _increment_frozen():
-                        print(f"  [Extracción] [!!] {_FROZEN_LIMIT} DNIs sin respuesta de Pangea. Haciendo F5...")
-                        _reset_frozen()
-                        page.reload(timeout=30000, wait_until="domcontentloaded")
-                        page.wait_for_timeout(3000)
-                        # Verificar si Pangea cargo tras F5
-                        current_url = page.url
-                        if "pangea.orange.es" not in current_url:
-                            print(f"  [Extracción] [FATAL] Pangea no disponible tras F5 (URL: {current_url})")
-                            raise Exception("Pangea no disponible tras F5")
-                        # Reabrir modal de busqueda
-                        print("  [Extracción] Pangea respondio tras F5. Reabriendo modal...")
-                        try:
-                            btn_cambiar = page.locator("button[title='Cambiar cliente']")
-                            btn_cambiar.wait_for(state="visible", timeout=10000)
-                            btn_cambiar.click(force=True)
-                            page.wait_for_selector("input[name='document']", state="visible", timeout=10000)
-                        except Exception:
-                            pass
-                    # Retornar vacio -> worker lo marca como error y reintenta luego
-                    print(f"  [Extracción] [WARN] {numero}: Pangea no respondio (modal abierto sin error). Frozen: {_frozen_count}/{_FROZEN_LIMIT}")
-                    return []
+                    print(f"  [Extracción] [FAIL] {numero} NO ES CLIENTE (modal abierto)")
+                    return [{
+                        "DNI": numero,
+                        "Nombre": "NO ES CLIENTE",
+                        "Direccion": "N/A",
+                        "Seg Fijo": "N/A",
+                        "Seg Movil": "N/A",
+                        "Paquete": "N/A",
+                        "Linea": numero,
+                        "es_cima": False,
+                        "tiene_renove_mixto": False,
+                        "variante_renove": "N/A",
+                        "tiene_tv": False,
+                        "es_principal": False,
+                        "etiquetas": [],
+                        "activo_desde": "N/A",
+                        "producto": "N/A",
+                        "estado_linea": [],
+                        "permanencia": "N/A",
+                        "consumo": "N/A",
+                        "venta_plazos": "N/A",
+                        "campanas_extra": [],
+                        "_modal_abierto": True,
+                    }]
             except Exception:
                 pass
 
