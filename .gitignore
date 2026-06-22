@@ -12,3 +12,8 @@ proxies.txt
 piloto_logs.txt
 piloto_logs_w*.txt
 fix*.py
+
+# Secretos y scripts sueltos (no versionar)
+KEYS_GENERADAS.txt
+_birthday_check.js
+_cols.js

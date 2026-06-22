@@ -28,7 +28,9 @@ load_dotenv(_env_path)
 print(f"[COORDINATOR] .env cargado desde: {_env_path}")
 
 BACKEND_URL = os.getenv("BOT_API_URL", "http://localhost:3000")
-BOT_API_KEY = os.getenv("BOT_API_KEY", "oratioo-bot-internal-key")
+BOT_API_KEY = os.getenv("BOT_API_KEY")
+if not BOT_API_KEY:
+    raise RuntimeError("[COORDINATOR] [!!] CRÍTICO: BOT_API_KEY no definida en .env. El sistema no puede arrancar sin clave de API.")
 BOT_DIR = Path(__file__).parent
 POLL_INTERVAL = 5  # segundos entre polls de comandos
 HEARTBEAT_INTERVAL = 30  # segundos entre heartbeats
@@ -116,12 +118,16 @@ def spawn_workers(count: int, machine_name: str):
 
     for i in range(count):
         c = creds[i % len(creds)] if creds else {"usuario": "", "password": ""}
+        # [SEGURIDAD] Credenciales ya no se pasan por CLI (visibles en ps aux).
+        # Se exportan como variables de entorno para el worker hijo.
+        env = os.environ.copy()
+        env["ORANGE_USER"] = c.get("usuario", "")
+        env["ORANGE_PASS"] = c.get("password", "")
         p = subprocess.Popen(
             [sys.executable, str(BOT_DIR / "worker_loop.py"),
              "--proxy", "--worker-id", str(i),
-             "--machine", machine_name,
-             "--credential-user", c.get("usuario", ""),
-             "--credential-pass", c.get("password", "")],
+             "--machine", machine_name],
+            env=env,
             # No capture stdout -- let workers print directly for debugging
         )
         processes.append(p)
@@ -172,9 +178,8 @@ def restart_dead_workers(machine_name: str):
             processes[i] = subprocess.Popen(
                 [sys.executable, str(BOT_DIR / "worker_loop.py"),
                  "--proxy", "--worker-id", str(i),
-                 "--machine", machine_name,
-                 "--credential-user", c.get("usuario", ""),
-                 "--credential-pass", c.get("password", "")],
+                 "--machine", machine_name],
+                env={**os.environ, "ORANGE_USER": c.get("usuario", ""), "ORANGE_PASS": c.get("password", "")},
             )
 
 # ===========================================

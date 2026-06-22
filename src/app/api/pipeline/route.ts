@@ -25,35 +25,40 @@ export async function GET(req: Request) {
     let query: string;
     if (userRole === 'desarrollador') {
       // CEO: ve todo el pool sin asignar
+      // [OPT] CTE evita que la subquery de proyecto_id se ejecute por cada fila
       query = `
+        WITH proyecto AS (SELECT id AS pid FROM proyectos WHERE nombre = 'orange')
         SELECT c.id_cliente, c.numero_documento as dni,
-               COALESCE(NULLIF(c.nombre_razon_social, ''), cp.datos->'header'->>'nombre', '—') as nombre,
+               COALESCE(NULLIF(c.nombre_razon_social, ''), cp.datos->'header'->>'nombre', '\u2014') as nombre,
                CASE WHEN (cp.datos->>'cima_global')::boolean THEN 'SI' ELSE 'NO' END as cima,
                cp.datos,
                cp.ultima_extraccion
         FROM clientes c
+        CROSS JOIN proyecto p
         JOIN clientes_proyectos cp ON c.id_cliente = cp.id_cliente
-          AND cp.proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'orange')
+          AND cp.proyecto_id = p.pid
           AND cp.datos->>'estado' = 'completado'
         LEFT JOIN pipeline pl ON c.id_cliente = pl.id_cliente
-          AND pl.proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'orange')
+          AND pl.proyecto_id = p.pid
           AND pl.deleted_at IS NULL
         WHERE pl.id IS NULL
       `;
     } else {
       // Jefe/Supervisor: solo ve leads que le fueron asignados
       query = `
+        WITH proyecto AS (SELECT id AS pid FROM proyectos WHERE nombre = 'orange')
         SELECT c.id_cliente, c.numero_documento as dni,
-               COALESCE(NULLIF(c.nombre_razon_social, ''), cp.datos->'header'->>'nombre', '—') as nombre,
+               COALESCE(NULLIF(c.nombre_razon_social, ''), cp.datos->'header'->>'nombre', '\u2014') as nombre,
                CASE WHEN (cp.datos->>'cima_global')::boolean THEN 'SI' ELSE 'NO' END as cima,
                cp.datos,
                cp.ultima_extraccion
         FROM clientes c
+        CROSS JOIN proyecto p
         JOIN clientes_proyectos cp ON c.id_cliente = cp.id_cliente
-          AND cp.proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'orange')
+          AND cp.proyecto_id = p.pid
           AND cp.datos->>'estado' = 'completado'
         JOIN pipeline pl ON c.id_cliente = pl.id_cliente
-          AND pl.proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'orange')
+          AND pl.proyecto_id = p.pid
           AND pl.deleted_at IS NULL
           AND pl.asesor_id = $${pi++} AND pl.estado = 'pendiente'
       `;

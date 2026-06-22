@@ -9,20 +9,24 @@ export async function GET() {
   try {
     // Stats por estado
     const { rows: stats } = await pool.query(`
+      WITH proyecto AS (SELECT id AS pid FROM proyectos WHERE nombre = 'orange')
       SELECT
-        COALESCE(datos->>'estado', 'pendiente') as estado,
+        COALESCE(cp.datos->>'estado', 'pendiente') as estado,
         COUNT(*) as total
       FROM clientes_proyectos cp
-      WHERE cp.proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'orange')
-      GROUP BY datos->>'estado'
+      CROSS JOIN proyecto p
+      WHERE cp.proyecto_id = p.pid
+      GROUP BY cp.datos->>'estado'
     `);
 
     // Últimos 50 DNIs con su estado
     const { rows: dnis } = await pool.query(`
+      WITH proyecto AS (SELECT id AS pid FROM proyectos WHERE nombre = 'orange')
       SELECT cp.id_cliente, cp.datos->>'estado' as estado,
              cp.ultima_extraccion, cp.updated_at
       FROM clientes_proyectos cp
-      WHERE cp.proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'orange')
+      CROSS JOIN proyecto p
+      WHERE cp.proyecto_id = p.pid
       ORDER BY cp.updated_at DESC NULLS LAST
       LIMIT 50
     `);

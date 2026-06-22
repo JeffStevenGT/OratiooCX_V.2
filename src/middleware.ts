@@ -62,6 +62,7 @@ export async function middleware(req: NextRequest) {
     '/clientes': ['supervisor', 'jefe_area', 'it', 'desarrollador', 'back_office'],
     '/power-dialer': ['asesor', 'supervisor', 'jefe_area', 'desarrollador'],
     '/vpbx': ['supervisor', 'jefe_area', 'desarrollador', 'it'],
+    '/ddis': ['it', 'desarrollador'],
     '/rendimiento': ['supervisor', 'jefe_area', 'desarrollador'],
     '/inteligencia': ['supervisor', 'jefe_area', 'desarrollador'],
     '/fichaje': ['asesor', 'supervisor', 'jefe_area', 'back_office', 'it', 'desarrollador'],

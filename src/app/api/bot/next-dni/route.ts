@@ -19,10 +19,12 @@ export async function GET(req: Request) {
 
   try {
     const { rows } = await pool.query(`
-      WITH tomado AS (
+      WITH proyecto AS (SELECT id AS pid FROM proyectos WHERE nombre = 'orange'),
+      tomado AS (
         SELECT cp.id, cp.id_cliente
         FROM clientes_proyectos cp
-        WHERE cp.proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'orange')
+        CROSS JOIN proyecto p
+        WHERE cp.proyecto_id = p.pid
           AND cp.datos->>'estado' = 'pendiente'
         LIMIT 1
         FOR UPDATE SKIP LOCKED

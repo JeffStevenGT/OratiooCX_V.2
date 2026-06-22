@@ -175,7 +175,7 @@ export async function GET(req: Request) {
     }
 
     // Enriquecer ranking con info de meta
-    for (const r of ranking) {
+    for (const r of ranking as any[]) {
       const meta = metas[r.id] || 0;
       r.meta = meta;
       r.porcentaje_meta = meta > 0 ? Math.round((r.ventas / meta) * 100) : 0;

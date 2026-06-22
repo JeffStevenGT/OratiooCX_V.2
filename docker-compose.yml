@@ -1,44 +1,79 @@
 # Oratioo CX — docker-compose.yml
-# Servicios: Next.js App + PostgreSQL
+# Despliegue VPS: Next.js App + PostgreSQL + Nginx
+#
+# Uso:
+#   1. Copia .env.production.template → .env.production y edita los valores
+#   2. docker compose up -d
 
 services:
+  # ── Next.js App (API + Frontend) ──
   app:
     build: .
-    container_name: oratioo-cx
+    container_name: oratioo-app
     restart: unless-stopped
-    ports:
-      - '127.0.0.1:3000:3000'  # solo accesible desde localhost (Nginx → proxy_pass)
     depends_on:
       db:
         condition: service_healthy
     env_file:
       - .env.production
+    environment:
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=3000
     networks:
       - oratioo
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3000/api/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
+  # ── PostgreSQL ──
   db:
     image: postgres:16-alpine
     container_name: oratioo-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
+      POSTGRES_USER: oratioo
       POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me}
       POSTGRES_DB: oratioo_cx
     ports:
-      - '127.0.0.1:5432:5432'  # solo localhost, NUNCA expuesto a internet
+      - '127.0.0.1:5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./docs/migracion_fichajes.sql:/docker-entrypoint-initdb.d/01_fichajes.sql
+      - ./migrations/001_cumpleanos_anuncios.sql:/docker-entrypoint-initdb.d/01_anuncios.sql
+      - ./migrations/002_indices_rendimiento.sql:/docker-entrypoint-initdb.d/02_indices.sql
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      test: ['CMD-SHELL', 'pg_isready -U oratioo -d oratioo_cx']
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
       - oratioo
 
+  # ── Nginx (reverse proxy + SSL vía certbot) ──
+  nginx:
+    image: nginx:alpine
+    container_name: oratioo-nginx
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - certbot_www:/var/www/certbot:ro
+      - certbot_conf:/etc/letsencrypt:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - oratioo
+
 volumes:
   pgdata:
+  certbot_www:
+  certbot_conf:
 
 networks:
   oratioo:

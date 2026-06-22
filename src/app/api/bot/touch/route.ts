@@ -22,11 +22,13 @@ export async function PATCH(req: Request) {
     if (!id_cliente) return NextResponse.json({ error: 'Falta id_cliente' }, { status: 400 });
 
     await pool.query(
-      `UPDATE clientes_proyectos
+      `WITH proyecto AS (SELECT id AS pid FROM proyectos WHERE nombre = 'orange')
+       UPDATE clientes_proyectos cp
        SET updated_at = now()
-       WHERE id_cliente = $1
-         AND proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'orange')
-         AND datos->>'estado' = 'en_progreso'`,
+       FROM proyecto p
+       WHERE cp.id_cliente = $1
+         AND cp.proyecto_id = p.pid
+         AND cp.datos->>'estado' = 'en_progreso'`,
       [id_cliente]
     );
 

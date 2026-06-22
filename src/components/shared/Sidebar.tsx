@@ -17,7 +17,7 @@ import {
   LayoutDashboard, Users, Settings, Upload, LogOut,
   Shield, Phone, Calendar, BookOpen, Package, Globe,
   AlertTriangle, Target, UserPlus, ChevronDown, ChevronRight, BarChart3, Star, TrendingUp,
-  PanelLeftClose, PanelLeftOpen, Moon, User, BrainCircuit, Clock,
+  PanelLeftClose, PanelLeftOpen, Moon, User, BrainCircuit, Clock, PhoneOutgoing,
 } from 'lucide-react';
 import NotificationBadge from './NotificationBadge';
 import OratiooLogo from './OratiooLogo';
@@ -63,6 +63,7 @@ const MENU_ITEMS: { label: string; items: MenuItem[] }[] = [
     label: 'Administración',
     items: [
       { to: '/vpbx', icon: Phone, label: 'VPBX', roles: ['supervisor', 'jefe_area', 'desarrollador', 'it'], countKey: 'vpbx' },
+      { to: '/ddis', icon: PhoneOutgoing, label: 'DDIs', roles: ['it', 'desarrollador'] },
       { to: '/usuarios', icon: Shield, label: 'Usuarios', roles: ['jefe_area', 'desarrollador'] },
       { to: '/bots', icon: Globe, label: 'Apps', roles: ['it', 'desarrollador'] },
       { to: '/admin/documentos', icon: Upload, label: 'Documentos', roles: ['supervisor', 'jefe_area', 'it', 'desarrollador'] },

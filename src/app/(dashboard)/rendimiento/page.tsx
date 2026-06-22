@@ -9,8 +9,8 @@ import { useState, useEffect } from 'react';
 import {
   BarChart3, TrendingUp, TrendingDown, Phone, Target, Users,
   Download, Loader2, Calendar, Filter, Trophy, Medal, Star,
-  Clock, Zap, UserCheck, PhoneCall, Minus, ArrowUp, ArrowDown,
-  MessageSquare, Award
+  Clock, Zap, PhoneCall, Minus, ArrowUp, ArrowDown,
+  Award
 } from 'lucide-react';
 import Skeleton, { TableSkeleton, PageSkeleton } from '@/components/shared/Skeleton';
 import FlipCard from '@/components/shared/FlipCard';
@@ -132,11 +132,8 @@ export default function RendimientoPage() {
         <div className="text-center py-20"><BarChart3 size={48} className="text-gray-400 dark:text-gray-500 mx-auto mb-4" /><p className="text-sm text-gray-500 dark:text-gray-400">Sin datos de rendimiento. Asegúrate de haber generado métricas diarias.</p></div>
       ) : (
         <>
-          {/* KPIs principales */}
-          <div className="grid grid-cols-5 gap-3">
-            <FlipCard back="Total de leads asignados a operadores">
-              <KPI icon={Users} label="Asignados" value={data.kpis.asignados} color="text-blue-600" />
-            </FlipCard>
+          {/* KPIs principales — solo datos clave de negocio */}
+          <div className="grid grid-cols-4 gap-3">
             <FlipCard back="Leads contactados exitosamente">
               <KPI icon={PhoneCall} label="Contactados" value={data.kpis.contactados} color="text-emerald-600"
                 delta={<Delta val={data.tendencias.contactados.delta} />} />
@@ -145,35 +142,20 @@ export default function RendimientoPage() {
               <KPI icon={Target} label="Ventas" value={data.kpis.ventas} color="text-[#481163]"
                 delta={<Delta val={data.tendencias.ventas.delta} />} />
             </FlipCard>
-            <FlipCard back="% de llamadas contestadas">
-              <KPI icon={UserCheck} label="Contestación" value={`${data.kpis.tasa_contestacion}%`} color="text-sky-600" />
+            <FlipCard back="% ventas sobre contactados">
+              <KPI icon={TrendingUp} label="Efectividad" value={`${data.kpis.efectividad}%`} color="text-amber-600" />
             </FlipCard>
             <FlipCard back="Tiempo hablado vs conectado">
-              <KPI icon={Zap} label="Ocupación" value={`${data.kpis.ocupacion}%`} color="text-amber-600"
+              <KPI icon={Zap} label="Ocupación" value={`${data.kpis.ocupacion}%`} color="text-sky-600"
                 tooltip="Tiempo hablado vs conectado" />
             </FlipCard>
           </div>
 
-          {/* Segunda fila KPIs */}
-          <div className="grid grid-cols-6 gap-3">
-            <FlipCard back="% ventas sobre contactados">
-              <MiniKPI icon={TrendingUp} label="Efectividad" value={`${data.kpis.efectividad}%`} />
-            </FlipCard>
-            <FlipCard back="% contactados sobre asignados">
-              <MiniKPI icon={Target} label="Contactabilidad" value={`${data.kpis.contactabilidad}%`} />
-            </FlipCard>
-            <FlipCard back="Puntaje promedio de calidad QA">
-              <MiniKPI icon={Star} label="Calidad QA" value={data.kpis.calidad.toFixed(1)} />
-            </FlipCard>
-            <FlipCard back="Asesores con actividad">
-              <MiniKPI icon={Users} label="Activos" value={data.kpis.asesores_activos} />
-            </FlipCard>
-            <FlipCard back="Rango del período analizado">
-              <MiniKPI icon={Clock} label="Período" value={`${data.periodo.desde} → ${data.periodo.hasta}`} text />
-            </FlipCard>
-            <FlipCard back="Variación vs período anterior">
-              <MiniKPI icon={MessageSquare} label="Tendencia ventas" value={<Delta val={data.tendencias.ventas.delta} />} raw />
-            </FlipCard>
+          {/* Datos complementarios */}
+          <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400 mb-1">
+            <span className="flex items-center gap-1"><Star size={12} className="text-amber-500" />Calidad QA: <strong>{data.kpis.calidad.toFixed(1)}</strong></span>
+            <span className="flex items-center gap-1"><Users size={12} />Asesores activos: <strong>{data.kpis.asesores_activos}</strong></span>
+            <span className="flex items-center gap-1"><Clock size={12} />Período: <strong>{data.periodo.desde} → {data.periodo.hasta}</strong></span>
           </div>
 
           {/* Tabs */}
@@ -505,22 +487,6 @@ function KPI({ icon: Icon, label, value, color, delta, tooltip }: any) {
         {delta}
       </div>
       <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{label}</p>
-    </div>
-  );
-}
-
-function MiniKPI({ icon: Icon, label, value, text, raw }: any) {
-  return (
-    <div className="card text-center py-2.5">
-      {Icon && <Icon size={14} className="mx-auto mb-0.5 text-gray-500 dark:text-gray-400" />}
-      {text ? (
-        <p className="text-[10px] text-gray-500 dark:text-gray-400 font-mono">{value}</p>
-      ) : raw ? (
-        <div className="flex justify-center">{value}</div>
-      ) : (
-        <p className="text-lg font-bold text-gray-900 dark:text-white">{value}</p>
-      )}
-      <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5">{label}</p>
     </div>
   );
 }

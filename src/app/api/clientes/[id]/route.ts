@@ -11,10 +11,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   try {
     const { rows: [cliente] } = await pool.query(
-      `SELECT c.*, cp.datos, cp.ultima_extraccion
+      `WITH proyecto AS (SELECT id AS pid FROM proyectos WHERE nombre = 'orange')
+       SELECT c.*, cp.datos, cp.ultima_extraccion
        FROM clientes c
+       CROSS JOIN proyecto p
        LEFT JOIN clientes_proyectos cp ON c.id_cliente = cp.id_cliente
-         AND cp.proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'orange')
+         AND cp.proyecto_id = p.pid
        WHERE c.id_cliente = $1`,
       [id]
     );

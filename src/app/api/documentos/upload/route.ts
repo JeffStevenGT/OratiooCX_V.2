@@ -237,7 +237,7 @@ export async function POST(req: Request) {
         );
         await pool.query(
           `INSERT INTO clientes_proyectos (id_cliente, proyecto_id, datos)
-           VALUES ($1, (SELECT id FROM proyectos WHERE nombre = 'orange'), $2)
+           VALUES ($1, (SELECT id FROM proyectos WHERE nombre = 'orange' LIMIT 1), $2)
            ON CONFLICT (id_cliente, proyecto_id) DO NOTHING`,
           [id_cliente, JSON.stringify({ estado: 'pendiente' })]
         );

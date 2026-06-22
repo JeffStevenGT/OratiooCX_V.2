@@ -814,7 +814,6 @@ export default function InicioPage() {
           </div>
         </div>
       )}
-    </div>
 
     {/* Modal de anuncios al entrar al proyecto */}
     {modalProyecto && (

@@ -1,0 +1,18 @@
+# Docker — archivos ignorados en el contexto de build
+node_modules
+.next
+.git
+.gitignore
+.env
+.env.*
+!.env.production.template
+*.md
+!docs/*.md
+bot/
+migrations/
+Dockerfile
+docker-compose.yml
+nginx.conf
+deploy.sh
+.cursor
+.hermes

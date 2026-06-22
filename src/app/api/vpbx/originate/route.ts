@@ -6,6 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import { originateCall } from '@/lib/vpbx';
+import { resolverOutboundDDI } from '@/lib/ddi-router';
 import { debounceCheck } from '@/lib/redis';
 import pool from '@/lib/db';
 
@@ -26,10 +27,13 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Lanzar llamada VPBX
-    const result = await originateCall(from, to);
+    // 1. Elegir el DDI de la provincia del cliente (null = DDI por defecto de VPBX)
+    const ddi = await resolverOutboundDDI(to).catch(() => null);
 
-    // 2. Registrar en historial
+    // 2. Lanzar llamada VPBX presentando ese DDI sólo en esta llamada
+    const result = await originateCall(from, to, { outboundId: ddi?.outboundId });
+
+    // 3. Registrar en historial
     if (dni) {
       const id_cliente = dni.startsWith('DNI_') || dni.startsWith('NIE_') || dni.startsWith('NIF_')
         ? dni
@@ -37,7 +41,10 @@ export async function POST(req: Request) {
       await pool.query(
         `INSERT INTO historial (id_cliente, tipo, proyecto_id, descripcion, datos)
          VALUES ($1, 'llamada', 1, 'Click2Call iniciado', $2)`,
-        [id_cliente, JSON.stringify({ from, to, callId: result?.variables?.callId })]
+        [id_cliente, JSON.stringify({
+          from, to, callId: result?.variables?.callId,
+          ddi: ddi?.ddi ?? null, provincia: ddi?.provincia ?? null, motivo: ddi?.motivo ?? 'defecto',
+        })]
       );
     }
 

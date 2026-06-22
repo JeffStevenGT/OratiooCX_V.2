@@ -2,9 +2,12 @@
 browser_setup.py — Configuración del navegador con proxy y geolocalización España
 =================================================================================
 Basado en el flujo del proyecto de referencia Bot_Orange.
+
+[SEGURIDAD] headless=True por defecto en producción.
+Para depuración local, define BOT_HEADLESS=0 en tu .env
 """
 
-import random
+import random, os
 from pathlib import Path
 
 
@@ -18,9 +21,14 @@ def crear_contexto_espana(playwright, proxy_config: dict = None):
         "password": "..."
     }
     Si proxy_config es None, se lanza sin proxy.
+
+    [SEGURIDAD] El navegador corre en modo headless por defecto.
+    Para ver la UI en desarrollo: BOT_HEADLESS=0 en .env
     """
+    # headless=True por defecto en producción; solo se desactiva con BOT_HEADLESS=0
+    headless = os.getenv("BOT_HEADLESS", "1") != "0"
     launch_args = {
-        "headless": False,
+        "headless": headless,
         "args": [
             "--disable-blink-features=AutomationControlled",
             "--no-sandbox",

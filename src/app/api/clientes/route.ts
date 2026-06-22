@@ -8,6 +8,7 @@ import pool from '@/lib/db';
 export async function GET() {
   try {
     const { rows } = await pool.query(`
+      WITH proyecto AS (SELECT id AS pid FROM proyectos WHERE nombre = 'orange')
       SELECT
         c.id_cliente,
         c.tipo_documento,
@@ -21,8 +22,9 @@ export async function GET() {
         cp.ultima_extraccion,
         cp.updated_at
       FROM clientes c
+      CROSS JOIN proyecto p
       JOIN clientes_proyectos cp ON c.id_cliente = cp.id_cliente
-      WHERE cp.proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'orange')
+      WHERE cp.proyecto_id = p.pid
         AND cp.datos->>'estado' IN ('completado', 'no_cliente')
       ORDER BY cp.ultima_extraccion DESC NULLS LAST
       LIMIT 500
@@ -34,9 +36,9 @@ export async function GET() {
       const header = datos.header || {};
       const lineas = datos.lineas || [];
 
-      // Nombre visible (header.nombre o nombre_razon_social)
+      // Nombre visible: usar header.nombre (contiene la casuistica real)
       const nombre = datos.estado === 'no_cliente'
-        ? 'NO ES CLIENTE'
+        ? (header.nombre || 'NO ES CLIENTE')
         : (header.nombre || r.nombre_razon_social || 'N/A');
 
       // CIMA global

@@ -25,9 +25,16 @@ async function vpbxFetch(path: string, options: RequestInit = {}) {
   return res.json();
 }
 
-/** Click2Call: suena en extensión, llama al cliente */
-export async function originateCall(from: string, to: string, timeout: number = 30) {
-  return vpbxFetch(`/originatecall/${from}/${to}?timeout=${timeout}`);
+/** Click2Call: suena en extensión, llama al cliente.
+ *  outboundId (UUID de una Regla de salida) presenta un DDI concreto SOLO en esta llamada. */
+export async function originateCall(
+  from: string,
+  to: string,
+  opts: { timeout?: number; outboundId?: string } = {},
+) {
+  const qs = new URLSearchParams({ timeout: String(opts.timeout ?? 30) });
+  if (opts.outboundId) qs.set('outboundId', opts.outboundId);
+  return vpbxFetch(`/originatecall/${from}/${to}?${qs.toString()}`);
 }
 
 /** Click2Call inverso: suena en número externo, conecta a destino interno */

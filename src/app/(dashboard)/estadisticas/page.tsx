@@ -5,7 +5,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { BarChart3, TrendingUp, Phone, Target, Users, Download, Loader2, Calendar, Filter, PhoneCall, PhoneOff, Clock, CheckCircle2, XCircle, Pause } from 'lucide-react';
+import { BarChart3, TrendingUp, Phone, PhoneCall, Target, Users, Download, Loader2, Calendar, Filter, Clock, XCircle, PhoneOff, Pause } from 'lucide-react';
 import Skeleton, { TableSkeleton, PageSkeleton } from '@/components/shared/Skeleton';
 import FlipCard from '@/components/shared/FlipCard';
 
@@ -102,8 +102,8 @@ export default function EstadisticasPage() {
         <div className="text-center py-20"><BarChart3 size={48} className="text-gray-400 dark:text-gray-500 mx-auto mb-4" /><p className="text-sm text-gray-500 dark:text-gray-400">Sin datos</p></div>
       ) : (
         <>
-          {/* KPIs principales */}
-          <div className="grid grid-cols-5 gap-3">
+          {/* KPIs principales — solo datos clave */}
+          <div className="grid grid-cols-4 gap-3">
             <FlipCard back="Total de leads asignados en el período">
               <KPI icon={Users} label="Asignados" value={stats.kpi.total_asignados} color="text-blue-600" />
             </FlipCard>
@@ -116,8 +116,15 @@ export default function EstadisticasPage() {
             <FlipCard back="% ventas sobre contactados">
               <KPI icon={TrendingUp} label="Efectividad" value={`${stats.kpi.efectividad}%`} color="text-amber-600" />
             </FlipCard>
-            <FlipCard back="% contactados sobre asignados">
-              <KPI icon={CheckCircle2} label="Contactabilidad" value={`${stats.kpi.contactabilidad}%`} color="text-purple-600" />
+          </div>
+
+          {/* Indicadores negativos: solo datos accionables */}
+          <div className="grid grid-cols-2 gap-3">
+            <FlipCard back="Leads que no mostraron interés">
+              <KPI icon={XCircle} label="No Interesa" value={stats.kpi.no_interesa} color="text-red-500" />
+            </FlipCard>
+            <FlipCard back="Leads que no contestaron llamadas">
+              <KPI icon={PhoneOff} label="No Contesta" value={stats.kpi.no_contesta} color="text-amber-500" />
             </FlipCard>
           </div>
 
@@ -199,42 +206,6 @@ export default function EstadisticasPage() {
               })()}
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-3">
-            <FlipCard back="Leads que no mostraron interés">
-              <KPI icon={XCircle} label="No Interesa" value={stats.kpi.no_interesa} color="text-red-500" />
-            </FlipCard>
-            <FlipCard back="Leads que no contestaron llamadas">
-              <KPI icon={PhoneOff} label="No Contesta" value={stats.kpi.no_contesta} color="text-amber-500" />
-            </FlipCard>
-            <FlipCard back="Leads pendientes de contacto">
-              <KPI icon={Clock} label="Pendientes" value={stats.kpi.pendientes} color="text-gray-500" />
-            </FlipCard>
-            <FlipCard back="Leads con interés manifestado">
-              <KPI icon={BarChart3} label="Interesados" value={stats.kpi.interesados} color="text-blue-400" />
-            </FlipCard>
-          </div>
-
-          {/* Llamadas */}
-          {stats.llamadas.total_llamadas > 0 && (
-            <div className="card">
-              <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><Phone size={16} className="text-[#0a6ea9]" /> Llamadas</h3>
-              <div className="grid grid-cols-4 gap-3">
-                <FlipCard back="Total de llamadas realizadas">
-                  <MiniStat label="Total" value={stats.llamadas.total_llamadas} />
-                </FlipCard>
-                <FlipCard back="Llamadas que fueron contestadas">
-                  <MiniStat label="Contestadas" value={stats.llamadas.contestadas} color="text-emerald-600" />
-                </FlipCard>
-                <FlipCard back="Llamadas sin respuesta">
-                  <MiniStat label="No contestan" value={stats.llamadas.no_contestan} color="text-red-500" />
-                </FlipCard>
-                <FlipCard back="Llamadas que fueron a buzón">
-                  <MiniStat label="Buzón" value={stats.llamadas.buzon} color="text-gray-500" />
-                </FlipCard>
-              </div>
-            </div>
-          )}
-
           <div className="grid grid-cols-2 gap-6">
             {/* Gráfico: Por día */}
             <div className="card">
@@ -369,15 +340,6 @@ function KPI({ icon: Icon, label, value, color }: any) {
       <Icon size={20} className={`mx-auto mb-1 ${color}`} />
       <p className="text-xl font-bold text-gray-900 dark:text-white">{value}</p>
       <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{label}</p>
-    </div>
-  );
-}
-
-function MiniStat({ label, value, color }: any) {
-  return (
-    <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-center">
-      <p className={`text-lg font-bold ${color || 'text-gray-900 dark:text-white'}`}>{value}</p>
-      <p className="text-[10px] text-gray-500 dark:text-gray-400">{label}</p>
     </div>
   );
 }

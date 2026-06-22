@@ -373,7 +373,7 @@ R2_BUCKET_NAME=
 - TypeScript estricto en frontend
 - Python con type hints en bot
 - Commits en español, formato [conventional commits](https://www.conventionalcommits.org/)
-- Rama activa: `submaster`
+- Rama activa: `main`
 - Build: `next build` (Next.js 15.5.19)
 - BD local: `postgresql://postgres@localhost:5433/oratioo_cx`
 - Deploy: Docker (Dockerfile + docker-compose.yml)
@@ -388,4 +388,4 @@ R2_BUCKET_NAME=
 | Ley 10/2021 | Modalidad presencial/remoto | ✅ |
 | RD-ley 2/2024 | Usuario desactivado no ficha (triple check) | ✅ |
 
-Ver docs/Oratioo CX - PRD.md sección 5.3 para detalle completo.
+Ver docs/PROJECT_MAP.md y docs/SETUP.md para detalle completo.

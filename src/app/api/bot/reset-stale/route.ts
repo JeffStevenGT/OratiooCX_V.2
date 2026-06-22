@@ -21,10 +21,12 @@ export async function POST(req: Request) {
     const { minutos = 5 } = await req.json().catch(() => ({}));
 
     const { rowCount } = await pool.query(
-      `UPDATE clientes_proyectos cp
+      `WITH proyecto AS (SELECT id AS pid FROM proyectos WHERE nombre = 'orange')
+       UPDATE clientes_proyectos cp
        SET datos = jsonb_set(datos, '{estado}', '"pendiente"'),
            updated_at = now()
-       WHERE cp.proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'orange')
+       FROM proyecto p
+       WHERE cp.proyecto_id = p.pid
          AND cp.datos->>'estado' = 'en_progreso'
          AND cp.updated_at < now() - ($1 || ' minutes')::interval`,
       [String(minutos)]
