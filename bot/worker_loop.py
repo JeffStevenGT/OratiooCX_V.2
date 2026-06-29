@@ -519,11 +519,21 @@ def main():
     _cleanup_ref = {"browser": browser, "context": context, "page": page, "pw": pw}
 
     # ── Login inicial ──
-    if not login_loop(page, cred_user, cred_pass, pw=pw, proxy_conf=proxy_conf):
-        print(f"{login.WORKER_TAG} [CRIT] No se pudo iniciar sesion. Abortando.")
-        destruir_navegador(browser, context, page, pw)
-        _cleanup_ref = {"browser": None, "context": None, "page": None, "pw": None}
-        return
+    while True:
+        try:
+            if login_loop(page, cred_user, cred_pass, pw=pw, proxy_conf=proxy_conf):
+                break  # Login exitoso
+            print(f"{login.WORKER_TAG} [CRIT] No se pudo iniciar sesion. Abortando.")
+            destruir_navegador(browser, context, page, pw)
+            _cleanup_ref = {"browser": None, "context": None, "page": None, "pw": None}
+            return
+        except PangeaDownError:
+            print(f"{login.WORKER_TAG} [CAIDA] Pangea no disponible en login inicial. Pausando 1.5 horas...")
+            time.sleep(5400)
+            # Recrear navegador tras la pausa
+            destruir_navegador(browser, context, page, pw)
+            browser, context, page = crear_navegador(pw, proxy_conf)
+            _cleanup_ref = {"browser": browser, "context": context, "page": page, "pw": pw}
     # Refrescar referencias (login_loop pudo recrear navegador por MaxSessionsError)
     browser = _cleanup_ref["browser"]
     context = _cleanup_ref["context"]
