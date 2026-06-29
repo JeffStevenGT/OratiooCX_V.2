@@ -26,6 +26,9 @@ export async function GET(req: Request) {
         CROSS JOIN proyecto p
         WHERE cp.proyecto_id = p.pid
           AND cp.datos->>'estado' = 'pendiente'
+          AND (cp.datos->>'version_extraccion' IS NULL OR (cp.datos->>'version_extraccion')::int = 0)
+        ORDER BY (cp.datos->>'version_extraccion')::int ASC NULLS FIRST,
+                 cp.ultima_extraccion ASC NULLS FIRST
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       )

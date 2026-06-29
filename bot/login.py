@@ -13,6 +13,17 @@ import random
 import time
 import re
 from playwright.sync_api import Page
+import builtins
+
+# Worker ID prefix for log tracing (set by worker_loop.py before extraction)
+WORKER_TAG = ""
+
+def _log(*args, **kwargs):
+    """Print con prefijo de worker [W{N}] para trazabilidad."""
+    if WORKER_TAG and args:
+        args = (f"{WORKER_TAG} {args[0]}",) + args[1:]
+    import builtins as _bi
+    _bi.print(*args, **kwargs)
 
 
 # -- Excepciones ------------------------------------
@@ -25,6 +36,34 @@ class SessionExpiredError(Exception):
 
 class CriticalError(Exception):
     pass
+
+class MaxSessionsError(LoginError):
+    """Error especifico cuando se alcanza el maximo de sesiones en Pangea."""
+    pass
+
+class CaptchaBlockedError(LoginError):
+    """Error cuando el CAPTCHA/Incapsula bloquea el login."""
+    pass
+
+class PangeaDownError(Exception):
+    """Pangea esta completamente caida (chrome-error, ERR_TIMED_OUT)."""
+    pass
+
+
+# -- Frozen counter (Pangea colgada) ----------------
+
+_frozen_count = 0
+_FROZEN_LIMIT = 12  # despues de 12 seguidos sin respuesta -> F5
+
+def _reset_frozen():
+    global _frozen_count
+    _frozen_count = 0
+
+def _increment_frozen() -> bool:
+    """Incrementa contador de congelamiento. Retorna True si alcanzo limite."""
+    global _frozen_count
+    _frozen_count += 1
+    return _frozen_count >= _FROZEN_LIMIT
 
 
 # -- Helpers ----------------------------------------
@@ -134,11 +173,11 @@ def _extraer_campanas_tab(bloque, page, tab_nombre: str) -> list:
         # Click en la pestaña
         try:
             tab_btn.first.click(timeout=4000)
-            page.wait_for_timeout(400)
+            page.wait_for_timeout(100)
         except Exception:
             try:
                 tab_btn.first.click(force=True, timeout=4000)
-                page.wait_for_timeout(400)
+                page.wait_for_timeout(100)
             except Exception:
                 return campanas
         # Extraer cards visibles
@@ -190,20 +229,21 @@ def manejar_cookies_flexible(page: Page):
         boton = page.locator("button:has-text('Aceptar')").first
         boton.wait_for(state="visible", timeout=5000)
         boton.click()
-        print("  [Login] Cookies aceptadas")
+        _log("  [Login] Cookies aceptadas")
     except Exception:
         pass
 
 
 def manejar_maximo_sesiones(page: Page):
-    """Maneja el modal de 'máximo número de sesiones'."""
+    """Maneja el modal de 'máximo número de sesiones' lanzando MaxSessionsError."""
     try:
         if page.get_by_text(
             "ya ha alcanzado el número máximo permitido de sesiones"
         ).is_visible(timeout=5000):
-            page.locator("button, input[type='submit']").first.click()
-            page.wait_for_load_state("networkidle")
-            print("  [Login] Sesión máxima cerrada")
+            _log("  [Login] [MAX-SESIONES] Detectado — esperando 5 min...")
+            raise MaxSessionsError("Máximo de sesiones alcanzado en Pangea")
+    except MaxSessionsError:
+        raise
     except Exception:
         pass
 
@@ -220,9 +260,21 @@ def realizar_login(page: Page, usuario: str = None, password: str = None):
     if not usuario or not password:
         raise LoginError("ORANGE_USER y ORANGE_PASS deben estar en .env")
 
-    print(f"  [Login] Iniciando sesión...")
+    _log(f"  [Login] Iniciando sesión...")
 
     try:
+        # ⚠️ Si ya estamos en selección de marca o dashboard, saltar login
+        # (SSO tiene sesión cacheada — Pangea redirige directo sin pedir credenciales)
+        current_url = page.url
+        if ".brands" in page.content()[:2000] or page.locator("a.orange-box").count() > 0:
+            _log("  [Login] [OK] Sesión SSO cacheada — ya en selector de marcas, saltando login")
+            page.wait_for_timeout(2000)  # esperar render Angular
+            return True
+        if "/qualification" in current_url or page.locator("#orange-container").count() > 0:
+            _log("  [Login] [OK] Sesión SSO cacheada — ya en dashboard, saltando login")
+            page.wait_for_timeout(2000)  # esperar render Angular
+            return True
+
         # Esperar campo de usuario (temp-username es el input Angular)
         page.wait_for_selector("input[name='temp-username']", timeout=20000)
         _escribir_como_humano(page, "input[name='temp-username']", usuario)
@@ -230,30 +282,101 @@ def realizar_login(page: Page, usuario: str = None, password: str = None):
 
         # Click en botón de login
         page.click("#submit-button")
+        page.wait_for_timeout(3000)
+
+        # Detectar si el CAPTCHA/Incapsula bloqueo el submit
+        try:
+            if page.locator("#submit-button").is_visible(timeout=2000):
+                _log("  [Login] [CAPTCHA] Bloqueo detectado — formulario sigue visible tras submit")
+                raise CaptchaBlockedError("CAPTCHA/Incapsula bloqueo el login")
+        except CaptchaBlockedError:
+            raise
+        except Exception:
+            pass
 
         # Manejar posible modal de máximo de sesiones
         manejar_maximo_sesiones(page)
 
-        # Esperar que aparezca el selector de marcas
-        page.wait_for_selector(".brands", timeout=30000)
-        print("  [Login] [OK] Login exitoso")
+        # Después del SSO, Pangea puede redirigir directo a /qualification (sin .brands)
+        # o mostrar el selector de marcas. Manejamos ambos casos.
+        page.wait_for_timeout(2000)
+        current_url = page.url
+        if "/qualification" in current_url or page.locator("#orange-container").count() > 0:
+            # Ya estamos en el dashboard — saltar selector de marcas
+            _log("  [Login] [OK] Login exitoso (directo a qualification)")
+            try:
+                page.wait_for_selector("#orange-container", state="visible", timeout=15000)
+            except Exception:
+                # Forzar visibilidad si está oculto (con null-check)
+                page.evaluate("""() => {
+                    const el = document.querySelector('#orange-container');
+                    if (el) el.style.display = 'block';
+                }""")
+                page.wait_for_timeout(1000)
+        else:
+            # Flujo normal: esperar selector de marcas
+            page.wait_for_selector(".brands", timeout=30000)
+            _log("  [Login] [OK] Login exitoso")
 
+    except MaxSessionsError:
+        raise  # Dejar que el worker lo maneje (esperar 5 min)
+    except CaptchaBlockedError:
+        raise  # Dejar que el worker lo maneje (esperar y rotar proxy)
     except Exception as e:
         raise LoginError(f"Fallo en login: {e}")
 
 
 def seleccionar_marca_orange(page: Page):
-    """Selecciona la marca Orange en el selector de marcas."""
-    print("  [Login] Seleccionando marca Orange...")
-    try:
-        selector = "a.orange-box"
-        page.wait_for_selector(selector, state="visible", timeout=20000)
-        page.wait_for_timeout(2000)
-        page.click(selector)
-        page.wait_for_selector("#orange-container", timeout=30000)
-        print("  [Login] [OK] Marca Orange seleccionada")
-    except Exception as e:
-        raise LoginError(f"Fallo al seleccionar marca: {e}")
+    """Selecciona la marca Orange. 3 intentos rapidos. Si falla -> LoginError."""
+    if "/qualification" in page.url or page.locator("#orange-container").count() > 0:
+        return  # ya estamos
+
+    selector = "a.orange-box"
+
+    for intento in range(3):
+        try:
+            page.wait_for_selector(selector, state="visible", timeout=15000)
+            page.wait_for_timeout(200)
+
+            # Estrategia 1+3 juntas: click normal y force click sin esperar entre ellos
+            try: page.click(selector, timeout=3000)
+            except: pass
+            try: page.click(selector, force=True, timeout=3000)
+            except: pass
+            page.wait_for_timeout(500)
+
+            if "/qualification" in page.url or page.locator("#orange-container").count() > 0:
+                return
+
+            # Estrategia 2: ng-click Angular
+            page.evaluate("""() => {
+                const el = document.querySelector('a.orange-box');
+                if (!el) return;
+                try {
+                    const scope = angular.element(el).scope();
+                    if (scope && scope.orangeFCUPdVCtrl) {
+                        scope.orangeFCUPdVCtrl.reload('orange');
+                    }
+                } catch(e) {}
+                el.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
+            }""")
+            page.wait_for_timeout(500)
+
+            if "/qualification" in page.url or page.locator("#orange-container").count() > 0:
+                return
+
+            # Estrategia 4: goto directo
+            page.goto("https://pangea.orange.es/qualification", timeout=20000)
+            page.wait_for_selector("#orange-container", timeout=10000)
+            return
+
+        except Exception as e:
+            if intento < 2:
+                # Recargar rapido, sin SSO completo
+                try: page.reload(timeout=10000)
+                except: pass
+
+    raise LoginError("Fallo al seleccionar marca Orange tras 3 intentos")
 
 
 def abrir_nuevo_acto_comercial(page: Page):
@@ -264,19 +387,28 @@ def abrir_nuevo_acto_comercial(page: Page):
     2. Force click si el elemento no es visible
     3. Navegación directa a la URL de Tarifas (más fiable)
     """
-    print("  [Login] Preparando entorno (nuevo acto comercial)...")
+    _log("  [Login] Preparando entorno (nuevo acto comercial)...")
     
     def _click_tarifas():
-        # Primero abrir el menú
+        # Primero abrir el menu — probar multiples selectores
         nac = page.locator("button:has-text('Nuevo acto comercial')")
-        nac.wait_for(state="visible", timeout=15000)
+        try:
+            nac.first.wait_for(state="visible", timeout=8000)
+        except Exception:
+            # Fallback: buscar por texto parcial o en spans internos
+            nac = page.locator("button, a, div[role='button']").filter(has_text="Nuevo acto")
+            nac.first.wait_for(state="visible", timeout=8000)
+        nac.first.hover()
+        page.wait_for_timeout(300)
         nac.first.click()
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(1500)
         
         # Estrategia 1: click normal
         tarifas = page.locator("li:has-text('Tarifas')")
         try:
             tarifas.first.wait_for(state="visible", timeout=5000)
+            tarifas.first.hover()
+            page.wait_for_timeout(300)
             tarifas.first.click()
             return True
         except Exception:
@@ -315,6 +447,8 @@ def abrir_nuevo_acto_comercial(page: Page):
         btn_crear = page.locator("button:has-text('Crear')").last
         btn_crear.wait_for(state="visible", timeout=20000)
         page.wait_for_timeout(1500)
+        btn_crear.hover()
+        page.wait_for_timeout(300)
         btn_crear.click()
 
         # Esperar que aparezca el botón de cambiar cliente
@@ -323,7 +457,7 @@ def abrir_nuevo_acto_comercial(page: Page):
         # -- BLINDAJE: inyectar CSS anti-Herramientas desde el inicio --
         _blindar_contra_tools_dropdown(page)
         
-        print("  [Login] [OK] Entorno listo")
+        _log("  [Login] [OK] Entorno listo")
     except Exception as e:
         raise LoginError(f"Fallo al armar entorno: {e}")
 
@@ -382,9 +516,9 @@ def _blindar_contra_tools_dropdown(page: Page):
                 pointer-events: none !important;
             }
         """)
-        print("  [Blindaje] CSS anti-Herramientas inyectado")
+        _log("  [Blindaje] CSS anti-Herramientas inyectado")
     except Exception as e:
-        print(f"  [Blindaje] [WARN] No se pudo inyectar CSS: {e}")
+        _log(f"  [Blindaje] [WARN] No se pudo inyectar CSS: {e}")
 
 
 def _verificar_no_navego_fuera(page: Page, dni_actual: str = "") -> bool:
@@ -392,16 +526,20 @@ def _verificar_no_navego_fuera(page: Page, dni_actual: str = "") -> bool:
     Retorna True si todo OK, False si detecto navegacion externa."""
     try:
         url = page.url
+        if "chrome-error" in url or "chromewebdata" in url:
+            _log(f"  [FATAL] [!!] PANGEA CAIDA detectada para DNI {dni_actual}!")
+            _log(f"  [FATAL] URL: {url}")
+            raise PangeaDownError(f"Pangea no disponible (chrome-error): {url}")
         if "pangea.orange.es" not in url:
-            print(f"  [ALARMA] [!!] NAVEGACION FUERA DE PANGEA detectada para DNI {dni_actual}!")
-            print(f"  [ALARMA] URL actual: {url}")
+            _log(f"  [ALARMA] [!!] NAVEGACION FUERA DE PANGEA detectada para DNI {dni_actual}!")
+            _log(f"  [ALARMA] URL actual: {url}")
             # Intentar volver
             try:
                 page.go_back()
                 page.wait_for_timeout(2000)
-                print(f"  [ALARMA] go_back() ejecutado, nueva URL: {page.url}")
+                _log(f"  [ALARMA] go_back() ejecutado, nueva URL: {page.url}")
             except Exception:
-                print(f"  [ALARMA] No se pudo hacer go_back()")
+                _log(f"  [ALARMA] No se pudo hacer go_back()")
             return False
         return True
     except Exception:
@@ -425,11 +563,11 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
     for intento in range(max_intentos):
         # -- Auto-detectar tipo de busqueda: DNI vs telefono --
         es_telefono = numero.replace(' ', '').replace('-', '').isdigit() and len(numero.replace(' ', '').replace('-', '')) == 9
-        print(f"  [Extracción] Buscando: {numero} (Intento {intento+1}) {'[TEL]' if es_telefono else '[DNI]'}")
+        _log(f"  [Extracción] Buscando: {numero} (Intento {intento+1}) {'[TEL]' if es_telefono else '[DNI]'}")
         try:
             # -- BLINDAJE 0: Verificar que no navegamos fuera --
             if not _verificar_no_navego_fuera(page, dni_actual=numero):
-                print(f"  [Extracción] [!!] Navegacion externa detectada -- abortando cliente {numero}")
+                _log(f"  [Extracción] [!!] Navegacion externa detectada -- abortando cliente {numero}")
                 return []
 
             # -- BLINDAJE 1: Inyectar CSS anti-Herramientas --
@@ -438,12 +576,10 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
             # -- 1. ABRIR MODAL (igual para DNI y telefono) ----------
             if modal_ya_abierto:
                 # Modal abierto del DNI anterior ("no es cliente")
-                selector_documento = "input[name='document']"
                 try:
-                    page.wait_for_selector(selector_documento, state="visible", timeout=5000)
+                    page.wait_for_selector("input[name='numeroDocumento']", state="visible", timeout=3000)
                 except Exception:
-                    selector_documento = "input[ng-model='locatorCtrl.inputDocument']"
-                    page.wait_for_selector(selector_documento, state="visible", timeout=5000)
+                    page.wait_for_selector("input[ng-model='locatorCtrl.inputDocument']", state="visible", timeout=3000)
             else:
                 # -- Abrir modal de busqueda --
                 btn_cambiar = page.locator("button[title='Cambiar cliente']")
@@ -451,7 +587,10 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                 btn_cambiar.click(force=True)
 
                 # Esperar a que el modal cargue
-                page.wait_for_selector("input[name='document']", state="visible", timeout=10000)
+                try:
+                    page.wait_for_selector("input[name='numeroDocumento']", state="visible", timeout=5000)
+                except Exception:
+                    page.wait_for_selector("input[ng-model='locatorCtrl.inputDocument']", state="visible", timeout=5000)
 
             # -- 2. ESCRIBIR EN EL CAMPO CORRECTO (DNI vs Telefono) --
             if es_telefono:
@@ -465,15 +604,16 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     "el => { el.dispatchEvent(new Event('input', { bubbles: true })); "
                     "el.dispatchEvent(new Event('change', { bubbles: true })); }"
                 )
-                print("  [Extracción] Telefono escrito en modal")
+                _log("  [Extracción] Telefono escrito en modal")
             else:
-                # DNI: escribir en input[name='document']
-                selector_documento = "input[name='document']"
+                # DNI: escribir en input[name='numeroDocumento']
                 try:
-                    page.wait_for_selector(selector_documento, state="visible", timeout=3000)
+                    page.wait_for_selector("input[name='numeroDocumento']", state="visible", timeout=3000)
                 except Exception:
-                    selector_documento = "input[ng-model='locatorCtrl.inputDocument']"
-                campo = page.locator(selector_documento).first
+                    pass
+                campo = page.locator("input[name='numeroDocumento']").first
+                if campo.count() == 0:
+                    campo = page.locator("input[ng-model='locatorCtrl.inputDocument']").first
                 campo.click()
                 campo.fill("")
                 campo.fill(numero)
@@ -489,11 +629,11 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
 
             # BLINDAJE POST-CLICK: verificar que no abrimos Centralita LOVE u otra pagina
             if not _verificar_no_navego_fuera(page, dni_actual=numero):
-                print(f"  [Extracción] [!!] Tras click Buscar cliente se navego fuera -- abortando {numero}")
+                _log(f"  [Extracción] [!!] Tras click Buscar cliente se navego fuera -- abortando {numero}")
                 return []
 
             # -- BLINDAJE: esperar que el modal se cierre (max 5s) --
-            print("  [Extracción] Verificando procesamiento...")
+            _log("  [Extracción] Verificando procesamiento...")
             try:
                 btn_buscar.wait_for(state="hidden", timeout=5000)
             except Exception:
@@ -502,7 +642,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
 
             # SEGUNDO BLINDAJE: verificar que seguimos en Pangea
             if not _verificar_no_navego_fuera(page, dni_actual=numero):
-                print(f"  [Extracción] [!!] Navegacion externa tras procesar {numero} -- retornando vacio")
+                _log(f"  [Extracción] [!!] Navegacion externa tras procesar {numero} -- retornando vacio")
                 return []
 
             # DETECTAR PYME (empresa) -- Pangea no cierra el modal
@@ -514,7 +654,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                         pyme_visible = True
                         break
                 if pyme_visible:
-                    print(f"  [Extracción] [PYME] {numero} es empresa -- cerrando modal")
+                    _log(f"  [Extracción] [PYME] {numero} es empresa -- cerrando modal")
                     try:
                         close_btn = page.locator("button.close[data-dismiss='modal']").last
                         if close_btn.count() > 0:
@@ -522,6 +662,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                             page.wait_for_timeout(500)
                     except Exception:
                         pass
+                    _reset_frozen()  # Pangea respondio (PYME)
                     return [{
                         "DNI": numero,
                         "Nombre": "CLIENTE PYME",
@@ -548,6 +689,36 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
             except Exception:
                 pass
 
+            # === DETECTAR MAXIMO DE LINEAS ("supera el maximo de lineas permitidas") ===
+            try:
+                max_lineas_matches = page.locator(".msg-error:has-text('supera el maximo de lineas permitidas')")
+                max_lineas_visible = False
+                for j in range(max_lineas_matches.count()):
+                    if max_lineas_matches.nth(j).is_visible():
+                        max_lineas_visible = True
+                        break
+                if max_lineas_visible:
+                    _log(f"  [Extraccion] [MAX-LINEAS] {numero} supera maximo de lineas -- cerrando modal")
+                    try:
+                        close_btn = page.locator("button.close[data-dismiss='modal']").last
+                        if close_btn.count() > 0:
+                            close_btn.click(force=True, timeout=3000)
+                            page.wait_for_timeout(500)
+                    except Exception:
+                        pass
+                    _reset_frozen()  # Pangea respondio (MAX LINEAS)
+                    return [{
+                        "DNI": numero, "Nombre": "CLIENTE MAX LINEAS", "Direccion": "N/A",
+                        "Seg Fijo": "N/A", "Seg Movil": "N/A", "Paquete": "N/A",
+                        "Linea": numero, "es_cima": False, "tiene_renove_mixto": False,
+                        "variante_renove": "N/A", "tiene_tv": False, "es_principal": False,
+                        "etiquetas": [], "activo_desde": "N/A", "producto": "N/A",
+                        "estado_linea": [], "permanencia": "N/A", "consumo": "N/A",
+                        "venta_plazos": "N/A", "campanas_extra": [], "_modal_abierto": False,
+                    }]
+            except Exception:
+                pass
+
             # === DETECTAR "NO ES CLIENTE" ===
             no_cliente_selectores = [
                 "span.txt:has-text('No se han encontrado datos')",
@@ -569,7 +740,8 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     continue
 
             if es_no_cliente:
-                print(f"  [Extracción] [FAIL] {numero} NO ES CLIENTE")
+                _reset_frozen()  # Pangea respondio — resetear contador de congelamiento
+                _log(f"  [Extracción] [FAIL] {numero} NO ES CLIENTE")
                 #  NO cerrar modal -- solo limpiar campo y escribir siguiente DNI
                 # El mensaje de error no bloquea el input
                 return [{
@@ -596,40 +768,48 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     "_modal_abierto": True,  # Modal sigue abierto, escribir siguiente DNI
                 }]
 
-            # SI EL MODAL SIGUE ABIERTO -> "no es cliente" (caso busqueda por telefono)
+            # === DETECTAR PANGEA CONGELADA (modal abierto SIN texto de error) ===
             try:
                 if btn_buscar.is_visible():
-                    print(f"  [Extracción] [FAIL] {numero} NO ES CLIENTE (modal abierto)")
-                    return [{
-                        "DNI": numero,
-                        "Nombre": "NO ES CLIENTE",
-                        "Direccion": "N/A",
-                        "Seg Fijo": "N/A",
-                        "Seg Movil": "N/A",
-                        "Paquete": "N/A",
-                        "Linea": numero,
-                        "es_cima": False,
-                        "tiene_renove_mixto": False,
-                        "variante_renove": "N/A",
-                        "tiene_tv": False,
-                        "es_principal": False,
-                        "etiquetas": [],
-                        "activo_desde": "N/A",
-                        "producto": "N/A",
-                        "estado_linea": [],
-                        "permanencia": "N/A",
-                        "consumo": "N/A",
-                        "venta_plazos": "N/A",
-                        "campanas_extra": [],
-                        "_modal_abierto": True,
-                    }]
+                    # Modal abierto pero SIN texto explicito de no_cliente
+                    # -> Pangea no respondio (congelada)
+                    if _increment_frozen():
+                        _log(f"  [Extracción] [!!] {_FROZEN_LIMIT} DNIs sin respuesta de Pangea. Haciendo F5...")
+                        _reset_frozen()
+                        page.reload(timeout=30000, wait_until="domcontentloaded")
+                        page.wait_for_timeout(3000)
+                        current_url = page.url
+                        if "pangea.orange.es" not in current_url:
+                            _log(f"  [Extracción] [FATAL] Pangea no disponible tras F5 (URL: {current_url})")
+                            raise PangeaDownError("Pangea no disponible tras F5")
+                        _log("  [Extracción] Pangea respondio tras F5. Reabriendo modal...")
+                        # Si tras F5 estamos en /qualification (dashboard), abrir NAC primero
+                        try:
+                            if "/qualification" in page.url:
+                                abrir_nuevo_acto_comercial(page)
+                        except Exception:
+                            pass
+                        try:
+                            btn_cambiar = page.locator("button[title='Cambiar cliente']")
+                            btn_cambiar.wait_for(state="visible", timeout=10000)
+                            btn_cambiar.click(force=True)
+                            try:
+                                page.wait_for_selector("input[name='numeroDocumento']", state="visible", timeout=5000)
+                            except Exception:
+                                page.wait_for_selector("input[ng-model='locatorCtrl.inputDocument']", state="visible", timeout=5000)
+                        except Exception:
+                            pass
+                    _log(f"  [Extracción] [WARN] {numero}: Pangea no respondio (modal abierto sin error). Frozen: {_frozen_count}/{_FROZEN_LIMIT}")
+                    return []
+            except PangeaDownError:
+                raise
             except Exception:
                 pass
-
             # === DETECTAR ERROR "No se han podido recuperar campañas" ===
             if _hay_toast_error(page):
-                print(f"  [Extracción] [FAIL] {numero}: error campañas -- Cambiar cliente y siguiente")
+                _log(f"  [Extracción] [FAIL] {numero}: error campañas -- Cambiar cliente y siguiente")
                 _abrir_cambiar_cliente(page)
+                _reset_frozen()  # Pangea respondio (aunque con error)
                 return [{
                     "DNI": numero,
                     "Nombre": "ERROR CAMPANAS",
@@ -654,9 +834,9 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     "_modal_abierto": True,
                 }]
 
-            print("  [Extracción] Cargando ficha de cliente...")
-            page.wait_for_timeout(1500)
-            page.wait_for_selector(".mod-barclient__container-data", timeout=20000)
+            _log("  [Extracción] Cargando ficha de cliente...")
+            page.wait_for_timeout(800)
+            page.wait_for_selector(".mod-barclient__container-data", timeout=40000)
 
             # -- DETECTAR CIMA GLOBAL (barra superior) --
             cima_global = False
@@ -676,7 +856,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
             dni_page_limpio = dni.strip().upper().replace("-", "").replace(".", "").replace(" ", "")
             dni_buscado_limpio = numero.strip().upper().replace("-", "").replace(".", "").replace(" ", "")
             if not es_telefono and dni_page_limpio and dni_buscado_limpio and dni_page_limpio not in ("N/A", "") and dni_page_limpio != dni_buscado_limpio:
-                print(f"  [Extracción] [FAIL] DNI no coincide: buscado={numero} vs pagina={dni} -- modal no cargo")
+                _log(f"  [Extracción] [FAIL] DNI no coincide: buscado={numero} vs pagina={dni} -- modal no cargo")
                 raise Exception(f"DNI mismatch: buscado {numero} != pagina {dni}")
 
             # SKIP DUPLICADOS: busqueda por telefono de cliente ya procesado
@@ -693,7 +873,8 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                         timeout=5,
                     )
                     if r.ok and r.json():
-                        print(f"  [Extracción] [SKIP] Cliente {dni_page_limpio} ya procesado -- omitiendo")
+                        _log(f"  [Extracción] [SKIP] Cliente {dni_page_limpio} ya procesado -- omitiendo")
+                        _reset_frozen()  # Pangea respondio (YA_PROCESADO)
                         return [{"DNI": dni_page_limpio, "Nombre": "YA_PROCESADO", "_skip": True,
                                 "Direccion": "N/A", "Seg Fijo": "N/A", "Seg Movil": "N/A",
                                 "Paquete": "N/A", "Linea": numero,
@@ -715,17 +896,18 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                 notif_el = page.locator(".notification-container .message-relevant.info p.title")
                 if notif_el.count() > 0:
                     notificacion_pack = notif_el.first.inner_text().strip()
-                    print(f"  [Extracción] Notificacion: {notificacion_pack}")
+                    _log(f"  [Extracción] Notificacion: {notificacion_pack}")
             except Exception:
                 pass
 
-            print(f"  [Extracción] Cliente: {nombre} | DNI: {dni} | Paquete: {paquete}")
-            print(f"  [Extracción] Dirección: {direccion}")
+            _log(f"  [Extracción] Cliente: {nombre} | DNI: {dni} | Paquete: {paquete}")
+            _log(f"  [Extracción] Dirección: {direccion}")
 
             # === TOAST ERROR ("No se han podido recuperar campañas") -- SALTAR DNI ===
             if _hay_toast_error(page):
-                print(f"  [Extracción] [FAIL] {numero}: error campañas -- Cambiar cliente y siguiente")
+                _log(f"  [Extracción] [FAIL] {numero}: error campañas -- Cambiar cliente y siguiente")
                 _abrir_cambiar_cliente(page)
+                _reset_frozen()  # Pangea respondio (aunque con error)
                 return [{
                     "DNI": numero,
                     "Nombre": "ERROR CAMPANAS",
@@ -757,8 +939,9 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
             pagina_actual = 1
 
             while hay_mas_paginas:
-                print(f"  [Extracción] Página {pagina_actual} de líneas...")
+                _log(f"  [Extracción] Página {pagina_actual} de líneas...")
                 bloques = page.locator(".client-tariff-flex")
+                primera_linea_pagina = None  # Para detectar loop de paginación
 
                 for i in range(bloques.count()):
                     bloque = bloques.nth(i)
@@ -783,22 +966,25 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                             if titulo_el.count() > 0:
                                 paquete_tariff = titulo_el.first.inner_text().strip()
                             else:
-                                print(f"      [DIAG] Ancestor encontrado pero sin título")
+                                _log(f"      [DIAG] Ancestor encontrado pero sin título")
                         else:
-                            print(f"      [DIAG] XPath ancestor no encontrado para este bloque")
+                            _log(f"      [DIAG] XPath ancestor no encontrado para este bloque")
                     except Exception as e:
-                        print(f"      [DIAG] Error ancestor lookup: {e}")
+                        _log(f"      [DIAG] Error ancestor lookup: {e}")
 
                     num_linea = bloque.locator(
                         ".line-section .color-primary strong"
                     ).inner_text().strip()
+                    # Guardar primera línea de la página para detectar loop
+                    if primera_linea_pagina is None:
+                        primera_linea_pagina = num_linea
                     # 🔄 Anti-loop: si ya vimos esta línea, Orange está repitiendo páginas
                     if num_linea in lineas_vistas:
-                        print(f"    🛑 Línea {num_linea} repetida -- loop de paginación. Saliendo.")
+                        _log(f"    🛑 Línea {num_linea} repetida -- loop de paginación. Saliendo.")
                         hay_mas_paginas = False
                         break
                     lineas_vistas.add(num_linea)
-                    print(f"    -> Línea: {num_linea} | Tariff: {paquete_tariff}")
+                    _log(f"    -> Línea: {num_linea} | Tariff: {paquete_tariff}")
 
                     # -- Extraer etiquetas reales del heading (CIMA, TV, Principal, etc.) --
                     try:
@@ -855,14 +1041,14 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                             # Encontrar el botón "Renove" en los tabs
                             renove_tab_btn = tab_bar.locator("button:has-text('Renove')")
                             if renove_tab_btn.count() > 0:
-                                print(f"      [RENOVE] Click en pestaña de navegación 'Renove'...")
+                                _log(f"      [RENOVE] Click en pestaña de navegación 'Renove'...")
                                 try:
                                     renove_tab_btn.first.click(timeout=5000)
-                                    page.wait_for_timeout(500)
+                                    page.wait_for_timeout(100)
                                 except Exception:
                                     try:
                                         renove_tab_btn.first.click(force=True, timeout=5000)
-                                        page.wait_for_timeout(500)
+                                        page.wait_for_timeout(100)
                                     except Exception:
                                         pass
 
@@ -916,20 +1102,20 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                                 # Si no hay texto, NO poner "Renove" a secas (pisaría datos válidos de otras líneas)
                                 # mejor dejar "N/A" -- la línea no tiene Renove visible
 
-                                print(f"      [RENOVE] Texto: {texto_card[:80] if texto_card else '(vacio)'} | -> {variante_renove}")
+                                _log(f"      [RENOVE] Texto: {texto_card[:80] if texto_card else '(vacio)'} | -> {variante_renove}")
                                 # Guardar también el texto original en campanas_extra para mostrarlo en la UI
                                 renove_texto_raw = texto_card.strip() if texto_card else variante_renove
                             else:
-                                print(f"      [RENOVE] No hay pestaña 'Renove' en la barra de tabs")
+                                _log(f"      [RENOVE] No hay pestaña 'Renove' en la barra de tabs")
                         else:
-                            print(f"      [RENOVE] No hay barra de pestañas en esta línea")
+                            _log(f"      [RENOVE] No hay barra de pestañas en esta línea")
                     except Exception as e:
-                        print(f"      [RENOVE] Error: {e}")
+                        _log(f"      [RENOVE] Error: {e}")
 
                     # -- FALLBACK heading --
                     if not tiene_rm and tiene_rm_heading:
                         variante_renove = "Renove (detectado en heading)"
-                        print(f"      [RENOVE] Detectado en heading: {heading_text[:80]}")
+                        _log(f"      [RENOVE] Detectado en heading: {heading_text[:80]}")
                         tiene_rm = True
 
                     if renove_timeout:
@@ -956,12 +1142,12 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                                 dropdown_btn = tab_bar_camp.locator("button.dropdown-toggle")
                                 if dropdown_btn.count() > 0:
                                     dropdown_btn.first.click(force=True, timeout=3000)
-                                    page.wait_for_timeout(400)
+                                    page.wait_for_timeout(100)
                                     # Click en "Otros" del menú desplegable
                                     otros_btn = page.locator("button.dropdown-item:has-text('Otros')")
                                     if otros_btn.count() > 0:
                                         otros_btn.first.click(force=True, timeout=3000)
-                                        page.wait_for_timeout(500)
+                                        page.wait_for_timeout(100)
                                         # Extraer cards visibles (ahora bajo "Otros")
                                         cards_c = bloque.locator(".client-tariff-section-cards")
                                         if cards_c.count() > 0:
@@ -984,7 +1170,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                                 renove_back = tab_bar_camp.locator("button:has-text('Renove')")
                                 if renove_back.count() > 0:
                                     renove_back.first.click(force=True, timeout=2000)
-                                    page.wait_for_timeout(200)
+                                    page.wait_for_timeout(100)
                             except Exception:
                                 pass
                     except Exception:
@@ -1030,41 +1216,107 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                 btn_siguiente = page.locator("button.ocs-pagination-next").first
                 if (btn_siguiente.count() > 0
                         and not btn_siguiente.is_disabled()):
-                    # Verificar si la PRIMERA línea de esta página ya se procesó (loop)
-                    if pagina_actual > 1 and lineas_finales and num_linea in lineas_vistas:
-                        print(f"  [Extracción] [!!] Loop detectado en página {pagina_actual}. Saliendo de paginacion.")
+                    # Verificar si la PRIMERA línea de esta página ya se procesó (loop real)
+                    if pagina_actual > 1 and primera_linea_pagina and primera_linea_pagina in lineas_vistas:
+                        _log(f"  [Extracción] [!!] Loop detectado en página {pagina_actual} (línea {primera_linea_pagina} repetida). Saliendo.")
                         hay_mas_paginas = False
                     else:
-                        print("  [Extracción] -> Siguiente página de líneas...")
+                        _log("  [Extracción] -> Siguiente página de líneas...")
                         btn_siguiente.click(force=True, timeout=30000)
                         page.wait_for_timeout(2000)
                         pagina_actual += 1
                 else:
                     hay_mas_paginas = False
 
+            _reset_frozen()  # Pangea respondio — resetear contador
             return lineas_finales
 
+        except PangeaDownError:
+            raise  # Re-lanzar para que el worker pause 1.5h
         except Exception as e:
-            print(f"  [Extracción] [WARN] Error recuperable: {e}")
+            _log(f"  [Extracción] [WARN] Error recuperable: {e}")
             if intento < max_intentos - 1:
-                print("  [Extracción] [RETRY] Recuperando sesión (1 F5)...")
+                _log("  [Extracción] [RETRY] Recuperando sesión (1 F5)...")
                 recuperado = False
                 try:
                     page.reload(timeout=30000, wait_until="domcontentloaded")
-                    page.wait_for_timeout(3000)
+                    # Detectar caída de Pangea tras F5 de recuperación
+                    if "chrome-error" in page.url or "chromewebdata" in page.url:
+                        raise PangeaDownError(f"Pangea caída durante recuperación: {page.url}")
+                    page.wait_for_timeout(5000)  # 5s para proxies lentos (Angular init)
                     if page.locator("a.orange-box").is_visible(timeout=5000):
                         page.locator("a.orange-box").click()
                         page.wait_for_timeout(2000)
-                    abrir_nuevo_acto_comercial(page)
-                    print("  [Extracción] [OK] Sesión recuperada tras F5")
+                    try:
+                        abrir_nuevo_acto_comercial(page)
+                    except Exception:
+                        # Reintentar: otro F5 + click orange si estamos en marcas + NAC
+                        page.reload(timeout=30000, wait_until="domcontentloaded")
+                        page.wait_for_timeout(3000)
+                        if page.locator("a.orange-box").is_visible(timeout=5000):
+                            page.locator("a.orange-box").click()
+                            page.wait_for_timeout(2000)
+                        abrir_nuevo_acto_comercial(page)
+                    _log("  [Extracción] [OK] Sesión recuperada tras F5")
                     recuperado = True
                 except Exception as ex:
-                    print(f"  [Extracción] F5 falló: {ex}")
+                    _log(f"  [Extracción] F5 falló: {ex}")
                 if not recuperado:
-                    print("  [Extracción] [FAIL] No se pudo recuperar con F5")
+                    _log("  [Extracción] [FAIL] No se pudo recuperar con F5")
             else:
                 return []  # vacío -> worker marca error para reintentar
 
+
+def logout_pangea(page) -> bool:
+    """Cierra sesión en Pangea para liberar la sesión HTTP del servidor.
+    Sin esto, browser.close() deja sesiones fantasma → MaxSessionsError.
+    
+    Estrategia (2 pasos):
+    1. UI: hover sobre icono de perfil → esperar dropdown → click "Cerrar sesión"
+    2. Fallback: navegar a /logout (SSO) + limpiar cookies/storage
+    
+    Retorna True si se hizo logout, False si no se pudo."""
+    
+    # ── Paso 1: Intentar logout vía UI (hover profile → dropdown → click) ──
+    try:
+        # Hover sobre el icono de perfil para abrir el dropdown
+        page.hover(".profile-btn a", timeout=5000)
+        
+        # Esperar hasta 3s a que el dropdown sea visible
+        try:
+            page.locator(".profile-dropdown:not(.hidden)").wait_for(
+                state="visible", timeout=3000
+            )
+            # Dropdown visible → click en "Cerrar sesión"
+            page.locator("button.profile-dropdown--logout").click(timeout=3000)
+            _log("  [Logout] UI: sesión cerrada vía dropdown")
+            page.wait_for_timeout(2000)
+            return True
+        except Exception:
+            # Dropdown no se abrió → fallback
+            _log("  [Logout] UI: dropdown no visible tras 3s, usando fallback URL")
+    except Exception:
+        _log("  [Logout] UI: hover falló, usando fallback URL")
+    
+    # ── Paso 2: Fallback — URL de logout del SSO de Orange ──
+    try:
+        page.goto("https://pangea.orange.es/logout", timeout=10000)
+        page.wait_for_timeout(2000)
+        _log("  [Logout] Fallback: sesión cerrada vía /logout")
+        return True
+    except Exception:
+        pass
+    
+    # ── Paso 3: Último recurso — limpiar cookies y storage ──
+    try:
+        page.context.clear_cookies()
+        page.evaluate("localStorage.clear(); sessionStorage.clear();")
+        _log("  [Logout] Fallback: cookies/storage limpiados")
+        return True
+    except Exception:
+        pass
+    
+    return False
 
 def verificar_sesion_valida(page: Page) -> bool:
     """Verifica si la sesión actual sigue siendo válida."""

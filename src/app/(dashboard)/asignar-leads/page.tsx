@@ -9,9 +9,20 @@ import { useState, useEffect } from 'react';
 import { Users, Loader2, CheckCircle2, UserPlus, Send, RotateCcw } from 'lucide-react';
 import { toast } from '@/components/shared/Toast';
 
-type Lead = { id_cliente: string; dni: string; nombre: string; cima: string; tiene_renove: boolean };
+type Lead = { id_cliente: string; dni: string; nombre: string; cima: string; tiene_renove: boolean; renove_valioso: boolean; mejor_variante: string | null; prioridad: number };
 type Liberado = { id_cliente: string; dni: string; nombre: string; asesor_anterior: string; liberado_at: string };
 type Subordinado = { id: number; nombre: string; equipo: string; rol: string; pendientes: number };
+
+const VARIANTES = [
+  { key: 'maximo', label: 'Máx descuento', text: 'Renove mixto al mejor precio con máximo descuento', color: 'emerald' },
+  { key: 'con_descuento', label: 'Con descuento', text: 'Renove mixto al mejor precio con descuento', color: 'blue' },
+  { key: 'mejor_precio', label: 'Mejor precio', text: 'Renove mixto al mejor precio', color: 'amber' },
+  { key: 'renove_mixto', label: 'Renove mixto', text: 'Renove mixto', color: 'slate' },
+];
+const VARIANTES_MENORES = [
+  { key: 'multidispositivo', label: 'Multidispositivo' },
+  { key: 'otros', label: 'Otros' },
+];
 
 export default function AsignarLeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -20,6 +31,10 @@ export default function AsignarLeadsPage() {
   const [subordinados, setSubordinados] = useState<Subordinado[]>([]);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState('');
+  const [varianteFilter, setVarianteFilter] = useState('');
+  const [cimaFilter, setCimaFilter] = useState<string | null>(null);
+  const [renoveFilter, setRenoveFilter] = useState<string | null>(null);
+  const [variantesActivas, setVariantesActivas] = useState<string[]>([]);
   const [asignando, setAsignando] = useState(false);
   const [resultado, setResultado] = useState('');
 
@@ -44,7 +59,8 @@ export default function AsignarLeadsPage() {
         fetch('/api/usuarios'),
       ]);
       const allUsers = await uRes.json();
-      setLeads(await lRes.json());
+      const leadsData = await lRes.json();
+      setLeads(leadsData.leads || (Array.isArray(leadsData) ? leadsData : []));
       setLiberados(await libRes.json());
 
       // Determinar subordinados según jerarquía
@@ -53,8 +69,11 @@ export default function AsignarLeadsPage() {
         // CEO ve jefes de área
         subs = allUsers.filter((u: any) => u.rol === 'jefe_area' && u.activo);
       } else if (role === 'jefe_area') {
-        // Jefe ve supervisores de su equipo
+        // Jefe ve supervisores de su equipo, o asesores directamente si no hay supervisores
         subs = allUsers.filter((u: any) => u.rol === 'supervisor' && u.activo && (!userEquipo || u.equipo === userEquipo));
+        if (subs.length === 0) {
+          subs = allUsers.filter((u: any) => u.rol === 'asesor' && u.activo && u.supervisor_id === parseInt(userId));
+        }
       } else if (role === 'supervisor') {
         // Supervisor ve asesores que le reportan
         subs = allUsers.filter((u: any) => u.rol === 'asesor' && u.activo && u.supervisor_id === parseInt(userId));
@@ -80,7 +99,39 @@ export default function AsignarLeadsPage() {
   useEffect(() => { fetchData(); }, []);
 
   const totalAsignado = Object.values(cantidades).reduce((s, v) => s + (parseInt(v) || 0), 0);
-  const disponibles = leads.length;
+  const filtered = (() => {
+    let result = leads;
+    if (cimaFilter) result = result.filter(l => l.cima === cimaFilter);
+    if (renoveFilter === 'SI') result = result.filter(l => l.tiene_renove && l.renove_valioso);
+    else if (renoveFilter === 'NO') result = result.filter(l => !l.tiene_renove || !l.renove_valioso);
+    if (variantesActivas.length > 0) {
+      result = result.filter(l => {
+        return variantesActivas.some(vk => {
+          // Variantes principales
+          const v = VARIANTES.find(x => x.key === vk);
+          if (v) return l.mejor_variante?.toLowerCase().includes(v.text.toLowerCase());
+          // Multidispositivo
+          if (vk === 'multidispositivo') return l.mejor_variante === 'Renove Multidispositivo';
+          // Otros
+          if (vk === 'otros') {
+            if (!l.mejor_variante || l.mejor_variante === 'N/A') return false;
+            const allKnown = [...VARIANTES.map(x => x.text), 'Renove Multidispositivo'];
+            return !allKnown.some(k => l.mejor_variante?.toLowerCase().includes(k.toLowerCase()));
+          }
+          return false;
+        });
+      });
+    }
+    if (varianteFilter) {
+      result = result.filter(l => l.mejor_variante?.toLowerCase().includes(
+        varianteFilter === 'Max Descuento' ? 'maximo descuento' :
+        varianteFilter === 'Con Descuento' ? 'con descuento' :
+        varianteFilter === 'Al Mejor Precio' ? 'al mejor precio' : 'mixto'
+      ));
+    }
+    return result;
+  })();
+  const disponibles = filtered.length;
   const excede = totalAsignado > disponibles;
 
   const setCantidad = (userId: string, val: string) => {
@@ -90,7 +141,7 @@ export default function AsignarLeadsPage() {
 
   const repartirIgual = () => {
     if (subordinados.length === 0) return;
-    const porUno = Math.floor(disponibles / subordinados.length);
+    const porUno = Math.floor(filtered.length / subordinados.length);
     const init: Record<string, string> = {};
     for (const s of subordinados) init[String(s.id)] = String(porUno);
     setCantidades(init);
@@ -103,7 +154,7 @@ export default function AsignarLeadsPage() {
 
     setAsignando(true);
     try {
-      let leadsRestantes = [...leads.map(l => l.id_cliente)];
+      let leadsRestantes = [...filtered.map(l => l.id_cliente)];
       let asignados = 0;
 
       for (const sub of subordinados) {
@@ -124,10 +175,7 @@ export default function AsignarLeadsPage() {
     setTimeout(() => setResultado(''), 4000);
   };
 
-  // Agrupar leads por categoría para mostrar resumen
-  const cimaLeads = leads.filter(l => l.cima === 'SI').length;
-  const renoveLeads = leads.filter(l => l.tiene_renove).length;
-  const cimaRenove = leads.filter(l => l.cima === 'SI' && l.tiene_renove).length;
+  // ── Control de asignación ──
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -154,28 +202,58 @@ export default function AsignarLeadsPage() {
 
       {tab === 'pendientes' && (
         <>
-          {/* Resumen rápido */}
-          {disponibles > 0 && (
-            <div className="grid grid-cols-4 gap-3">
-              <div className="card text-center p-3">
-                <p className="text-2xl font-bold text-slate-700">{disponibles}</p>
-                <p className="text-[10px] text-slate-400">Disponibles</p>
-              </div>
-              <div className="card text-center p-3">
-                <p className="text-2xl font-bold text-emerald-600">{cimaLeads}</p>
-                <p className="text-[10px] text-slate-400">CIMA</p>
-              </div>
-              <div className="card text-center p-3">
-                <p className="text-2xl font-bold text-blue-600">{renoveLeads}</p>
-                <p className="text-[10px] text-slate-400">Renove</p>
-              </div>
-              <div className="card text-center p-3">
-                <p className="text-2xl font-bold text-purple-600">{cimaRenove}</p>
-                <p className="text-[10px] text-slate-400">CIMA + Renove</p>
-              </div>
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            <span
+              onClick={() => setCimaFilter(cimaFilter === 'SI' ? null : 'SI')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer select-none transition-all ${
+                cimaFilter === 'SI'
+                  ? 'bg-emerald-100 text-emerald-700 border border-emerald-300 shadow-sm'
+                  : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-400'
+              }`}>CIMA</span>
+            <span
+              onClick={() => setRenoveFilter(renoveFilter === 'SI' ? null : 'SI')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer select-none transition-all ${
+                renoveFilter === 'SI'
+                  ? 'bg-blue-100 text-blue-700 border border-blue-300 shadow-sm'
+                  : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-400'
+              }`}>Renove</span>
+            <span className="text-xs text-gray-400 font-medium">Variantes:</span>
+            <div className="flex gap-1 flex-wrap">
+              {VARIANTES.map(v => {
+                const activa = variantesActivas.includes(v.key);
+                const colorMap: Record<string, string> = {
+                  emerald: 'border-emerald-300 text-emerald-700 bg-emerald-100',
+                  blue: 'border-blue-300 text-blue-700 bg-blue-100',
+                  amber: 'border-amber-300 text-amber-700 bg-amber-100',
+                  slate: 'border-slate-300 text-slate-700 bg-slate-100',
+                };
+                return (
+                  <button key={v.key} onClick={() => setVariantesActivas(prev =>
+                    prev.includes(v.key) ? prev.filter(x => x !== v.key) : [...prev, v.key]
+                  )}
+                    className={`text-[10px] px-2 py-1 rounded-full border transition-colors font-medium ${
+                      activa ? colorMap[v.color] || colorMap.slate : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                    }`}>{activa ? '✓' : '○'} {v.label}</button>
+                );
+              })}
+              <span className="text-gray-400 text-xs mx-0.5">|</span>
+              {VARIANTES_MENORES.map(v => {
+                const activa = variantesActivas.includes(v.key);
+                return (
+                  <button key={v.key} onClick={() => setVariantesActivas(prev =>
+                    prev.includes(v.key) ? prev.filter(x => x !== v.key) : [...prev, v.key]
+                  )}
+                    className={`text-[10px] px-2 py-1 rounded-full border transition-colors font-medium ${
+                      activa ? 'border-slate-300 text-slate-700 bg-slate-100' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                    }`}>{activa ? '✓' : '○'} {v.label}</button>
+                );
+              })}
             </div>
-          )}
-
+            {(cimaFilter || renoveFilter || variantesActivas.length > 0) && (
+              <button onClick={() => { setCimaFilter(null); setRenoveFilter(null); setVariantesActivas([]); }}
+                className="text-xs text-[#0a6ea9] hover:underline ml-1">Limpiar</button>
+            )}
+          </div>
           {/* Chips de subordinados */}
           {loading ? (
             <div className="flex justify-center py-16"><Loader2 size={28} className="animate-spin text-gray-400 dark:text-gray-500" /></div>

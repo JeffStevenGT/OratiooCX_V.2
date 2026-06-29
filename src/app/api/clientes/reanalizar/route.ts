@@ -11,7 +11,10 @@ export async function POST(req: Request) {
 
   await pool.query(
     `UPDATE clientes_proyectos
-     SET datos = jsonb_set(datos, '{estado}', '"pendiente"'), updated_at = now()
+     SET datos = jsonb_set(
+            jsonb_set(datos, '{estado}', '"pendiente"'),
+            '{version_extraccion}', '0'
+          ), updated_at = now()
      WHERE id_cliente = $1 AND proyecto_id = 1`,
     [id_cliente]
   );

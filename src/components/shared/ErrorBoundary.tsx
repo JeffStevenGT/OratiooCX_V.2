@@ -14,6 +14,7 @@ export class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error) {
+    window.dispatchEvent(new CustomEvent('navigation-end'));
     return { hasError: true, error };
   }
 

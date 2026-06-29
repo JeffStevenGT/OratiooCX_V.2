@@ -42,7 +42,7 @@ const MENU_ITEMS: { label: string; items: MenuItem[] }[] = [
     items: [
       { to: '/power-dialer', icon: Phone, label: 'Power Dialer', roles: ['asesor', 'supervisor'], proyectos: ['orange'], countKey: 'mine' },
       { to: '/agenda', icon: Calendar, label: 'Agenda', roles: ['asesor', 'supervisor'], countKey: 'agenda' },
-      { to: '/fichaje', icon: Clock, label: 'Fichaje', roles: ['asesor', 'supervisor', 'jefe_area', 'back_office', 'it', 'desarrollador'], countKey: 'fichaje' },
+      // { to: '/fichaje', icon: Clock, label: 'Fichaje', roles: ['asesor', 'supervisor', 'jefe_area', 'back_office', 'it', 'desarrollador'], countKey: 'fichaje' },
       { to: '/clientes', icon: Users, label: 'Clientes', roles: ['supervisor', 'jefe_area', 'it', 'desarrollador'] },
       { to: '/asignar-leads', icon: UserPlus, label: 'Asignar Leads', roles: ['jefe_area', 'supervisor', 'desarrollador'], countKey: 'pool' },
     ],

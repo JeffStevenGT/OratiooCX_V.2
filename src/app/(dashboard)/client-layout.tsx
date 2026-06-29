@@ -12,7 +12,6 @@ import TopLoader from '@/components/shared/TopLoader';
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   return (
     <ErrorBoundary>
-      <TopLoader />
       {children}
       <OfflineIndicator />
     </ErrorBoundary>

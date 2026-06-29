@@ -15,9 +15,10 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const cima = searchParams.get('cima');
     const renove = searchParams.get('renove');
+    const variante = searchParams.get('variante'); // filtrar por tipo: Max Descuento, Al Mejor Precio, etc
     const fechaDesde = searchParams.get('fechaDesde');
     const fechaHasta = searchParams.get('fechaHasta');
-    const limit = parseInt(searchParams.get('limit') || '200');
+    const limit = parseInt(searchParams.get('limit') || '50000');
 
     const params: any[] = [];
     let pi = 1;
@@ -31,7 +32,26 @@ export async function GET(req: Request) {
         SELECT c.id_cliente, c.numero_documento as dni,
                COALESCE(NULLIF(c.nombre_razon_social, ''), cp.datos->'header'->>'nombre', '\u2014') as nombre,
                CASE WHEN (cp.datos->>'cima_global')::boolean THEN 'SI' ELSE 'NO' END as cima,
-               cp.datos,
+               EXISTS(SELECT 1 FROM jsonb_array_elements(cp.datos->'lineas') l
+                      WHERE (l->>'tiene_renove')::boolean) as tiene_renove,
+               EXISTS(SELECT 1 FROM jsonb_array_elements(cp.datos->'lineas') l
+                      WHERE (l->>'tiene_renove')::boolean
+                      AND l->>'variante_renove' IN (
+                        'Renove mixto',
+                        'Renove mixto al mejor precio',
+                        'Renove mixto al mejor precio con descuento',
+                        'Renove mixto al mejor precio con maximo descuento',
+                        'Renove mixto al mejor precio con máximo descuento'
+                      )) as renove_valioso,
+               (SELECT l->>'variante_renove' FROM jsonb_array_elements(cp.datos->'lineas') l
+                WHERE (l->>'tiene_renove')::boolean
+                AND l->>'variante_renove' IN (
+                  'Renove mixto al mejor precio con maximo descuento',
+                  'Renove mixto al mejor precio con máximo descuento',
+                  'Renove mixto al mejor precio con descuento',
+                  'Renove mixto al mejor precio',
+                  'Renove mixto'
+                ) LIMIT 1) as mejor_variante,
                cp.ultima_extraccion
         FROM clientes c
         CROSS JOIN proyecto p
@@ -50,7 +70,26 @@ export async function GET(req: Request) {
         SELECT c.id_cliente, c.numero_documento as dni,
                COALESCE(NULLIF(c.nombre_razon_social, ''), cp.datos->'header'->>'nombre', '\u2014') as nombre,
                CASE WHEN (cp.datos->>'cima_global')::boolean THEN 'SI' ELSE 'NO' END as cima,
-               cp.datos,
+               EXISTS(SELECT 1 FROM jsonb_array_elements(cp.datos->'lineas') l
+                      WHERE (l->>'tiene_renove')::boolean) as tiene_renove,
+               EXISTS(SELECT 1 FROM jsonb_array_elements(cp.datos->'lineas') l
+                      WHERE (l->>'tiene_renove')::boolean
+                      AND l->>'variante_renove' IN (
+                        'Renove mixto',
+                        'Renove mixto al mejor precio',
+                        'Renove mixto al mejor precio con descuento',
+                        'Renove mixto al mejor precio con maximo descuento',
+                        'Renove mixto al mejor precio con máximo descuento'
+                      )) as renove_valioso,
+               (SELECT l->>'variante_renove' FROM jsonb_array_elements(cp.datos->'lineas') l
+                WHERE (l->>'tiene_renove')::boolean
+                AND l->>'variante_renove' IN (
+                  'Renove mixto al mejor precio con maximo descuento',
+                  'Renove mixto al mejor precio con máximo descuento',
+                  'Renove mixto al mejor precio con descuento',
+                  'Renove mixto al mejor precio',
+                  'Renove mixto'
+                ) LIMIT 1) as mejor_variante,
                cp.ultima_extraccion
         FROM clientes c
         CROSS JOIN proyecto p
@@ -85,38 +124,29 @@ export async function GET(req: Request) {
 
     const { rows } = await pool.query(query, params);
 
-    // Enriquecer con info de renove
     const leads = rows.map((r: any) => {
-      const lineas = (r.datos?.lineas) || [];
-      const tieneRenove = lineas.some((l: any) => l.tiene_renove);
-      const PRIORIDAD = [
-        'Renove mixto al mejor precio con máximo descuento',
-        'Renove mixto al mejor precio con descuento',
-        'Renove mixto al mejor precio',
-        'Renove mixto',
-        'Renove Multidispositivo',
-      ];
-      let variante = 'N/A';
-      if (tieneRenove) {
-        for (const p of PRIORIDAD) {
-          const m = lineas.find((l: any) => l.variante_renove === p);
-          if (m) { variante = p; break; }
-        }
-        // Fallback: si no coincidió con las conocidas, usar la primera variante no N/A
-        if (variante === 'N/A') {
-          const otra = lineas.find((l: any) => l.variante_renove && l.variante_renove !== 'N/A');
-          if (otra) variante = otra.variante_renove;
-        }
-      }
-      return { ...r, tiene_renove: tieneRenove, renove_variante: variante, lineas_count: lineas.length };
+      const es_cima = r.cima === 'SI';
+      const es_renove_valioso = !!r.renove_valioso;
+      const prioridad = (es_cima && es_renove_valioso) ? 3 : es_cima ? 2 : es_renove_valioso ? 1 : 0;
+      return {
+        id_cliente: r.id_cliente,
+        dni: r.dni,
+        nombre: r.nombre,
+        cima: r.cima,
+        tiene_renove: !!r.tiene_renove,
+        renove_valioso: es_renove_valioso,
+        mejor_variante: r.mejor_variante || null,
+        prioridad,
+      };
     });
+    // Ordenar por prioridad descendente (los más valiosos primero)
+    leads.sort((a, b) => b.prioridad - a.prioridad);
 
-    // Filtrar renove en JS (más simple que en SQL con JSONB anidado)
     let result = leads;
     if (renove === 'true') result = result.filter((l: any) => l.tiene_renove);
     else if (renove === 'false') result = result.filter((l: any) => !l.tiene_renove);
 
-    return NextResponse.json(result, {
+    return NextResponse.json({ leads: result }, {
       headers: { 'Cache-Control': 'no-store' },
     });
   } catch (e: any) {

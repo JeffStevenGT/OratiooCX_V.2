@@ -18,18 +18,24 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { minutos = 5 } = await req.json().catch(() => ({}));
+    const { minutos = 5, estado = 'en_progreso' } = await req.json().catch(() => ({}));
+
+    // Validar estado: solo 'en_progreso' o 'error'
+    const estadoValido = estado === 'error' ? 'error' : 'en_progreso';
 
     const { rowCount } = await pool.query(
       `WITH proyecto AS (SELECT id AS pid FROM proyectos WHERE nombre = 'orange')
        UPDATE clientes_proyectos cp
-       SET datos = jsonb_set(datos, '{estado}', '"pendiente"'),
+       SET datos = jsonb_set(
+              jsonb_set(datos, '{estado}', '"pendiente"'),
+              '{version_extraccion}', '0'
+            ),
            updated_at = now()
        FROM proyecto p
        WHERE cp.proyecto_id = p.pid
-         AND cp.datos->>'estado' = 'en_progreso'
+         AND cp.datos->>'estado' = $2
          AND cp.updated_at < now() - ($1 || ' minutes')::interval`,
-      [String(minutos)]
+      [String(minutos), estadoValido]
     );
 
     return NextResponse.json({ rescatados: rowCount ?? 0 });

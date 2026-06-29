@@ -64,12 +64,13 @@ export async function PATCH(req: Request) {
     if (!nombre) return NextResponse.json({ error: 'Falta nombre' }, { status: 400 });
 
     await pool.query(
-      `UPDATE maquinas
-       SET workers_activos = $2,
-           ultimo_heartbeat = now(),
-           estado = 'online',
-           updated_at = now()
-       WHERE nombre = $1`,
+      `INSERT INTO maquinas (nombre, workers_activos, ultimo_heartbeat, estado, updated_at)
+       VALUES ($1, $2, now(), 'online', now())
+       ON CONFLICT (nombre) DO UPDATE
+         SET workers_activos = $2,
+             ultimo_heartbeat = now(),
+             estado = 'online',
+             updated_at = now()`,
       [nombre, workers_activos || 0]
     );
 

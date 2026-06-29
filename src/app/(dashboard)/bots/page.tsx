@@ -19,6 +19,7 @@ export default function AppsPage() {
   const [sending, setSending] = useState<string | null>(null);
   const [lastAction, setLastAction] = useState<string | null>(null);
   const [workers, setWorkers] = useState(5);
+  const [useProxy, setUseProxy] = useState(true);
   const [ctrlMaquina, setCtrlMaquina] = useState('*');
   const [ctrlMaquinas, setCtrlMaquinas] = useState<Maquina[]>([]);
   const [statusMsg, setStatusMsg] = useState('Coordinator en espera');
@@ -66,8 +67,8 @@ export default function AppsPage() {
   const totalWorkers = ctrlMaquinas.reduce((s, m) => s + m.workers_activos, 0);
 
   // ── Control Workers ──
-  const sendCommand = async (cmd: string, label: string) => { setSending(cmd); setStatusMsg(`Enviando "${label}"...`);
-    try { const res = await fetch('/api/bot/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ comando: cmd, workers, maquina: ctrlMaquina }) }); const data = await res.json().catch(() => ({}));
+  const sendCommand = async (cmd: string, label: string, extra: any = {}) => { setSending(cmd); setStatusMsg(`Enviando "${label}"...`);
+    try { const res = await fetch('/api/bot/command', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ comando: cmd, workers, maquina: ctrlMaquina, ...extra }) }); const data = await res.json().catch(() => ({}));
       if (res.ok) { setLastAction(cmd); toast.success(`${label} completado`); setStatusMsg(`${label} — ${workers} workers`); }
       else { toast.error(data.error || `Error ${res.status}`); setStatusMsg(data.error || `Error ${res.status}`); }
     } catch { toast.error('Error de conexión'); setStatusMsg('Error de conexión'); }
@@ -182,9 +183,16 @@ export default function AppsPage() {
               </select>
             </div>
           </div>
+          <div className="flex items-center gap-3 mb-6 px-1">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={useProxy} onChange={e => setUseProxy(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-[#0a6ea9] focus:ring-[#0a6ea9]" />
+              <span className="text-sm text-gray-700 dark:text-gray-300">Usar proxy (IP España)</span>
+            </label>
+          </div>
 
           <div className="flex gap-2">
-            <button onClick={() => sendCommand('iniciar', 'Iniciar')} disabled={sending !== null}
+            <button onClick={() => sendCommand('iniciar', 'Iniciar', { proxy: useProxy })} disabled={sending !== null}
               className="flex-1 flex items-center justify-center gap-2 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 dark:disabled:bg-gray-600 text-white font-medium text-sm rounded-xl transition-colors">
               {sending === 'iniciar' ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />} Iniciar
             </button>

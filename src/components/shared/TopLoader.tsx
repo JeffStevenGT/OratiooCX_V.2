@@ -21,9 +21,6 @@ export default function TopLoader() {
     // Iniciar animación al cambiar de ruta
     setLoading(true);
     setWidth(0);
-    // Deshabilitar clics mientras carga (evita múltiples navegaciones)
-    document.body.style.cursor = 'wait';
-    document.body.style.pointerEvents = 'auto';
 
     // Simular progreso rápido al inicio (efecto psicológico)
     let progress = 0;
@@ -40,12 +37,15 @@ export default function TopLoader() {
     // Completar al cargar
     const finish = () => {
       setWidth(100);
-      document.body.style.cursor = '';
       timerRef.current = setTimeout(() => {
         setLoading(false);
         setWidth(0);
       }, 300);
     };
+
+    // Escuchar evento de fin de navegación (error boundary)
+    const onNavEnd = () => finish();
+    window.addEventListener('navigation-end', onNavEnd);
 
     // Timeout de seguridad: si tarda más de 8s, completar igual
     const safety = setTimeout(finish, 8000);
@@ -54,6 +54,7 @@ export default function TopLoader() {
       clearTimeout(safety);
       if (animRef.current) clearTimeout(animRef.current);
       if (timerRef.current) clearTimeout(timerRef.current);
+      window.removeEventListener('navigation-end', onNavEnd);
       finish();
     };
   }, [pathname, searchParams]);
@@ -61,11 +62,15 @@ export default function TopLoader() {
   if (!loading) return null;
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-[9999] h-[3px]">
-      <div
-        className="h-full bg-[#0a6ea9] transition-all duration-300 ease-out rounded-r-full shadow-[0_0_8px_rgba(10,110,169,0.5)]"
-        style={{ width: `${width}%` }}
-      />
-    </div>
+    <>
+      <div className="fixed top-0 left-0 right-0 z-[9999] h-[3px]">
+        <div
+          className="h-full bg-[#0a6ea9] transition-all duration-300 ease-out rounded-r-full shadow-[0_0_8px_rgba(10,110,169,0.5)]"
+          style={{ width: `${width}%` }}
+        />
+      </div>
+      {/* Overlay invisible que bloquea clics durante la carga */}
+      <div className="fixed inset-0 z-[99999] cursor-wait bg-black/5" />
+    </>
   );
 }

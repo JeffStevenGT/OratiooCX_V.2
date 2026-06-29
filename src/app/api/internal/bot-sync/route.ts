@@ -120,14 +120,29 @@ export async function POST(req: Request) {
 
     const pid = proyecto_id || 1;
 
-    // ── Transacción: SELECT FOR UPDATE → UPSERT → detecciones → historial ──
+    // ── Transacción: asegurar cliente → SELECT FOR UPDATE → UPSERT → detecciones → historial ──
     await transaction(async (client) => {
+      // Asegurar que el cliente existe en la tabla clientes
+      await client.query(
+        `INSERT INTO clientes (id_cliente) VALUES ($1) ON CONFLICT (id_cliente) DO NOTHING`,
+        [id_cliente]
+      );
+
       // Leer datos anteriores con lock (evita race condition entre workers)
       const { rows: [prev] } = await client.query(
         `SELECT datos FROM clientes_proyectos WHERE id_cliente = $1 AND proyecto_id = $2 FOR UPDATE`,
         [id_cliente, pid]
       );
       const datosViejos = prev?.datos || null;
+
+      // ⚠️ GUARD: Si otro worker ya completó este DNI, no sobrescribir
+      const estadoActual = datosViejos?.estado;
+      const versionActual = datosViejos?.version_extraccion || 0;
+      if (estadoActual === 'completado' && versionActual >= 1) {
+        // Otro worker ya lo procesó mientras este estaba atascado
+        console.log(`[bot-sync] SKIP ${id_cliente}: ya completado por otro worker (v${versionActual})`);
+        return;  // Sale de la transacción sin modificar nada
+      }
 
       // Determinar si hay datos reales previos
       const tieneDatosPrevios = datosViejos && (
