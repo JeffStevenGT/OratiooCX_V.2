@@ -842,13 +842,11 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
             try:
                 page.wait_for_selector(".mod-barclient__container-data", timeout=2000)
             except Exception:
-                # Verificar si estamos en dashboard (sin hash de cliente)
-                url_hash = page.url.split("#")[-1] if "#" in page.url else ""
+                # Verificar si estamos en dashboard (sin hash de ruta de cliente)
+                url_after_hash = page.url.split("#")[-1] if "#" in page.url else ""
                 en_dashboard = (
                     page.locator("#orange-container").count() > 0
-                    and "/clientDetails" not in url_hash
-                    and "/generalData" not in url_hash
-                    and "/searchClient" not in url_hash
+                    and (not url_after_hash or url_after_hash in ("/", ""))
                 )
                 if en_dashboard:
                     # ¿Acto comercial sigue vivo? → DNI problemático, no sesión expirada
