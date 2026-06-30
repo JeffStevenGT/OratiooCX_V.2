@@ -846,6 +846,12 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                         page.wait_for_selector("button[title='Cambiar cliente']", state="visible", timeout=2000)
                         _log(f"  [Extracción] [FAIL] {numero}: Pangea no puede cargar datos — marcando sin_datos")
                         _reset_frozen()
+                        # Reabrir acto comercial para siguiente DNI (sin F5)
+                        try:
+                            abrir_nuevo_acto_comercial(page)
+                            _log("  [Extracción] [NAC] Acto comercial reabierto para siguiente DNI")
+                        except Exception:
+                            _log("  [Extracción] [NAC] No se pudo reabrir acto — siguiente DNI lo intentara")
                         return [{
                             "DNI": numero, "Nombre": "CLIENTE NO CARGABLE", "Direccion": "N/A",
                             "Seg Fijo": "N/A", "Seg Movil": "N/A", "Paquete": "N/A",
@@ -854,7 +860,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                             "etiquetas": [], "activo_desde": "N/A", "producto": "N/A",
                             "estado_linea": [], "permanencia": "N/A", "consumo": "N/A",
                             "venta_plazos": "N/A", "campanas_extra": [],
-                            "_modal_abierto": True,
+                            "_modal_abierto": False,
                         }]
                     except Exception:
                         _log("  [Extracción] [!!] Sesión expirada (redirect a qualification sin NAC) — recuperando...")
