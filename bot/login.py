@@ -836,9 +836,9 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
 
             _log("  [Extracción] Cargando ficha de cliente...")
             page.wait_for_timeout(800)
-            # Quick 6s check: si Pangea redirigió a /qualification
+            # Quick 2s check: si Pangea redirigió a /qualification
             try:
-                page.wait_for_selector(".mod-barclient__container-data", timeout=6000)
+                page.wait_for_selector(".mod-barclient__container-data", timeout=2000)
             except Exception:
                 if "/qualification" in page.url or page.locator("#orange-container").count() > 0:
                     # ¿Acto comercial sigue vivo? → DNI problemático, no sesión expirada
@@ -865,8 +865,8 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     except Exception:
                         _log("  [Extracción] [!!] Sesión expirada (redirect a qualification sin NAC) — recuperando...")
                         raise Exception("Sesión expirada — Pangea redirigió a qualification")
-                # Pangea lento, esperar el resto (34s)
-                page.wait_for_selector(".mod-barclient__container-data", timeout=34000)
+                # Pangea lento, esperar el resto (38s)
+                page.wait_for_selector(".mod-barclient__container-data", timeout=38000)
 
             # -- DETECTAR CIMA GLOBAL (barra superior) --
             cima_global = False
