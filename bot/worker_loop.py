@@ -212,6 +212,8 @@ def extraer_datos_estructurados(page, dni):
     # Detectar errores especiales de Pangea
     if primera.get("Nombre") == "ERROR CAMPANAS":
         return {"estado": "sin_datos", "error": "Sin servicios activos en Pangea"}
+    if primera.get("Nombre") == "CLIENTE NO CARGABLE":
+        return {"estado": "sin_datos", "error": "Pangea no puede cargar datos del cliente"}
 
     header = {
         "nombre": primera.get("Nombre", "N/A"),

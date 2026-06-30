@@ -836,13 +836,29 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
 
             _log("  [Extracción] Cargando ficha de cliente...")
             page.wait_for_timeout(800)
-            # Quick 6s check: si Pangea redirigió a /qualification, sesión expirada
+            # Quick 6s check: si Pangea redirigió a /qualification
             try:
                 page.wait_for_selector(".mod-barclient__container-data", timeout=6000)
             except Exception:
                 if "/qualification" in page.url or page.locator("#orange-container").count() > 0:
-                    _log("  [Extracción] [!!] Sesión expirada (redirect a qualification) — recuperando...")
-                    raise Exception("Sesión expirada — Pangea redirigió a qualification")
+                    # ¿Acto comercial sigue vivo? → DNI problemático, no sesión expirada
+                    try:
+                        page.wait_for_selector("button[title='Cambiar cliente']", state="visible", timeout=2000)
+                        _log(f"  [Extracción] [FAIL] {numero}: Pangea no puede cargar datos — marcando sin_datos")
+                        _reset_frozen()
+                        return [{
+                            "DNI": numero, "Nombre": "CLIENTE NO CARGABLE", "Direccion": "N/A",
+                            "Seg Fijo": "N/A", "Seg Movil": "N/A", "Paquete": "N/A",
+                            "Linea": numero, "es_cima": False, "tiene_renove_mixto": False,
+                            "variante_renove": "N/A", "tiene_tv": False, "es_principal": False,
+                            "etiquetas": [], "activo_desde": "N/A", "producto": "N/A",
+                            "estado_linea": [], "permanencia": "N/A", "consumo": "N/A",
+                            "venta_plazos": "N/A", "campanas_extra": [],
+                            "_modal_abierto": True,
+                        }]
+                    except Exception:
+                        _log("  [Extracción] [!!] Sesión expirada (redirect a qualification sin NAC) — recuperando...")
+                        raise Exception("Sesión expirada — Pangea redirigió a qualification")
                 # Pangea lento, esperar el resto (34s)
                 page.wait_for_selector(".mod-barclient__container-data", timeout=34000)
 
