@@ -837,10 +837,20 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
             _log("  [Extracción] Cargando ficha de cliente...")
             page.wait_for_timeout(800)
             # Quick 2s check: si Pangea redirigió a /qualification
+            # [!!] "/qualification" aparece también en URLs de cliente (#/clientDetails/...).
+            # Solo es dashboard si NO hay hash de cliente y SÍ está #orange-container.
             try:
                 page.wait_for_selector(".mod-barclient__container-data", timeout=2000)
             except Exception:
-                if "/qualification" in page.url or page.locator("#orange-container").count() > 0:
+                # Verificar si estamos en dashboard (sin hash de cliente)
+                url_hash = page.url.split("#")[-1] if "#" in page.url else ""
+                en_dashboard = (
+                    page.locator("#orange-container").count() > 0
+                    and "/clientDetails" not in url_hash
+                    and "/generalData" not in url_hash
+                    and "/searchClient" not in url_hash
+                )
+                if en_dashboard:
                     # ¿Acto comercial sigue vivo? → DNI problemático, no sesión expirada
                     try:
                         page.wait_for_selector("button[title='Cambiar cliente']", state="visible", timeout=2000)
@@ -865,7 +875,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     except Exception:
                         _log("  [Extracción] [!!] Sesión expirada (redirect a qualification sin NAC) — recuperando...")
                         raise Exception("Sesión expirada — Pangea redirigió a qualification")
-                # Pangea lento, esperar el resto (38s)
+                # Pangea lento (dashboard sin orange-container, o página de cliente cargando), esperar el resto (38s)
                 page.wait_for_selector(".mod-barclient__container-data", timeout=38000)
 
             # -- DETECTAR CIMA GLOBAL (barra superior) --
