@@ -561,6 +561,7 @@ def main():
     errores = 0
     recycle_count = 0
     errores_consecutivos = 0
+    no_cargable_seguidos = 0
     sin_trabajo = 0
     detenido = False
 
@@ -662,13 +663,19 @@ def main():
                     print(f"{login.WORKER_TAG}   -> NO CLIENTE")
                     exito = True
                     errores_consecutivos = 0
+                    no_cargable_seguidos = 0
                     break
 
                 if estado == "sin_datos":
-                    # Cliente existe en Pangea pero sin servicios activos ahora
                     no_clientes += 1
                     sync_result(id_cliente, datos, "sin_datos")
-                    print(f"{login.WORKER_TAG}   -> SIN DATOS (sin servicios activos en Pangea)")
+                    error_msg = datos.get("error", "")
+                    if "no puede cargar" in error_msg.lower():
+                        no_cargable_seguidos += 1
+                        print(f"{login.WORKER_TAG}   -> SIN DATOS (no cargable {no_cargable_seguidos}/3)")
+                    else:
+                        no_cargable_seguidos = 0
+                        print(f"{login.WORKER_TAG}   -> SIN DATOS (sin servicios activos en Pangea)")
                     exito = True
                     errores_consecutivos = 0
                     break
@@ -679,6 +686,7 @@ def main():
                     print(f"{login.WORKER_TAG}   -> YA PROCESADO (DNI={datos.get('dni_real', '?')})")
                     exito = True
                     errores_consecutivos = 0
+                    no_cargable_seguidos = 0
                     break
 
                 if estado == "error_conexion":
@@ -708,6 +716,7 @@ def main():
                         procesados += 1
                         recycle_count += 1
                         errores_consecutivos = 0
+                        no_cargable_seguidos = 0
                         exito = True
                     else:
                         print(f"{login.WORKER_TAG}   -> ERROR al sincronizar con backend")
@@ -760,6 +769,20 @@ def main():
                 continue
 
         # === POST-PROCESAMIENTO ===
+
+        # Safety: 3+ DNIs no cargables seguidos -> refrescar pagina (posible degradacion de sesion)
+        if no_cargable_seguidos >= 3:
+            print(f"{login.WORKER_TAG} [SAFETY] {no_cargable_seguidos} DNIs no cargables seguidos — refrescando pagina...")
+            try:
+                page.reload(timeout=30000, wait_until="domcontentloaded")
+                page.wait_for_timeout(3000)
+                if "pangea.orange.es" not in page.url:
+                    print(f"{login.WORKER_TAG} [SAFETY] Pangea no disponible tras reload")
+                else:
+                    print(f"{login.WORKER_TAG} [SAFETY] Pagina refrescada OK")
+            except Exception as e:
+                print(f"{login.WORKER_TAG} [SAFETY] Error en reload: {e}")
+            no_cargable_seguidos = 0
 
         # Circuit breaker: 30 errores consecutivos -> reiniciar navegador
         if errores_consecutivos >= 30:
