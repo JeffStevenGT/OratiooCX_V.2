@@ -324,7 +324,7 @@ def login_loop(page, cred_user='', cred_pass='', dni_touch: str = None, pw=None,
             print(f"{login.WORKER_TAG} [SESION] Esperando {wait_min} min para que expiren sesiones...")
             time.sleep(wait_min * 60)
             # Recrear navegador
-            if pw and proxy_conf is not None:
+            if pw is not None:
                 try:
                     browser, context, page = crear_navegador(pw, proxy_conf)
                     _cleanup_ref["browser"] = browser
@@ -347,7 +347,7 @@ def login_loop(page, cred_user='', cred_pass='', dni_touch: str = None, pw=None,
                 try: browser.close()
                 except: pass
                 time.sleep(5)
-                if pw and proxy_conf is not None:
+                if pw is not None:
                     browser, context, page = crear_navegador(pw, proxy_conf)
                     _cleanup_ref["browser"] = browser
                     _cleanup_ref["context"] = context
