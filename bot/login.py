@@ -1281,7 +1281,7 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     # Detectar caída de Pangea tras F5 de recuperación
                     if "chrome-error" in page.url or "chromewebdata" in page.url:
                         raise PangeaDownError(f"Pangea caída durante recuperación: {page.url}")
-                    page.wait_for_timeout(5000)  # 5s para proxies lentos (Angular init)
+                    page.wait_for_timeout(8000)  # 8s para proxies lentos (Angular init post-F5)
                     if page.locator("a.orange-box").is_visible(timeout=5000):
                         page.locator("a.orange-box").click()
                         page.wait_for_timeout(2000)

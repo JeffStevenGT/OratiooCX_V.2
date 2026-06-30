@@ -840,8 +840,8 @@ def main():
             print(f"{login.WORKER_TAG} [RECYCLE] Navegador reciclado OK")
             continue
 
-        # Verificar sesion cada 25 DNIs (procesados o errores)
-        if (procesados + errores) > 0 and (procesados + errores) % 25 == 0:
+        # Verificar sesion cada 15 DNIs (reducido de 25 para evitar expiraciones)
+        if (procesados + errores) > 0 and (procesados + errores) % 15 == 0:
             if not verificar_sesion_valida(page):
                 print(f"{login.WORKER_TAG} [RETRY] Sesion expirada, relogueando...")
                 try:
