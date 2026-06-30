@@ -837,10 +837,10 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
             _log("  [Extracción] Cargando ficha de cliente...")
             page.wait_for_timeout(800)
             # Quick 2s check: si Pangea redirigió a /qualification
-            # [!!] "/qualification" aparece también en URLs de cliente (#/clientDetails/...).
-            # Solo es dashboard si NO hay hash de cliente y SÍ está #orange-container.
+            # Quick 6s check: si Pangea redirigió a /qualification
+            # [!!] Solo es dashboard si el hash esta vacio. Cualquier ruta = pagina de cliente.
             try:
-                page.wait_for_selector(".mod-barclient__container-data", timeout=2000)
+                page.wait_for_selector(".mod-barclient__container-data", timeout=6000)
             except Exception:
                 # Verificar si estamos en dashboard (sin hash de ruta de cliente)
                 url_after_hash = page.url.split("#")[-1] if "#" in page.url else ""
@@ -873,8 +873,8 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     except Exception:
                         _log("  [Extracción] [!!] Sesión expirada (redirect a qualification sin NAC) — recuperando...")
                         raise Exception("Sesión expirada — Pangea redirigió a qualification")
-                # Pangea lento (dashboard sin orange-container, o página de cliente cargando), esperar el resto (38s)
-                page.wait_for_selector(".mod-barclient__container-data", timeout=38000)
+                # Pangea lento, esperar el resto (34s)
+                page.wait_for_selector(".mod-barclient__container-data", timeout=34000)
 
             # -- DETECTAR CIMA GLOBAL (barra superior) --
             cima_global = False
