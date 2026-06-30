@@ -213,7 +213,7 @@ def extraer_datos_estructurados(page, dni):
     if primera.get("Nombre") == "ERROR CAMPANAS":
         return {"estado": "sin_datos", "error": "Sin servicios activos en Pangea"}
     if primera.get("Nombre") == "CLIENTE NO CARGABLE":
-        return {"estado": "sin_datos", "error": "Pangea no puede cargar datos del cliente"}
+        return {"estado": "no_cargable", "error": "Pangea no puede cargar datos del cliente"}
 
     header = {
         "nombre": primera.get("Nombre", "N/A"),
@@ -669,13 +669,17 @@ def main():
                 if estado == "sin_datos":
                     no_clientes += 1
                     sync_result(id_cliente, datos, "sin_datos")
-                    error_msg = datos.get("error", "")
-                    if "no puede cargar" in error_msg.lower():
-                        no_cargable_seguidos += 1
-                        print(f"{login.WORKER_TAG}   -> SIN DATOS (no cargable {no_cargable_seguidos}/3)")
-                    else:
-                        no_cargable_seguidos = 0
-                        print(f"{login.WORKER_TAG}   -> SIN DATOS (sin servicios activos en Pangea)")
+                    print(f"{login.WORKER_TAG}   -> SIN DATOS (sin servicios activos en Pangea)")
+                    exito = True
+                    errores_consecutivos = 0
+                    no_cargable_seguidos = 0
+                    break
+
+                if estado == "no_cargable":
+                    no_clientes += 1
+                    sync_result(id_cliente, datos, "no_cargable")
+                    no_cargable_seguidos += 1
+                    print(f"{login.WORKER_TAG}   -> NO CARGABLE ({no_cargable_seguidos}/3)")
                     exito = True
                     errores_consecutivos = 0
                     break
