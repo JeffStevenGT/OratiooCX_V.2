@@ -618,11 +618,10 @@ def main():
             continue
         sin_trabajo = 0
 
-        # Parsear DNI
+        # Parsear DNI — usar id_cliente EXACTAMENTE como lo devuelve next_dni
+        # La API ya retorna el id_cliente correcto de la BD (con o sin prefijo)
+        id_cliente = dni_data
         dni = dni_data.split("_")[-1] if "_" in dni_data else dni_data
-        id_cliente = dni_data if "_" in dni_data else f"DNI_{dni}"
-        if re.match(r'^[XYZ]', dni): id_cliente = f"NIE_{dni}"
-        elif re.match(r'^[A-Z]', dni): id_cliente = f"NIF_{dni}"
 
         print(f"{login.WORKER_TAG} \n{'='*60}")
         print(f"{login.WORKER_TAG} [{datetime.now().strftime('%H:%M:%S')}] DNI: {dni} ({procesados} OK | {no_clientes} NC | {errores} ERR)")
