@@ -31,7 +31,7 @@ export async function GET(req: Request) {
     JOIN clientes_proyectos cp ON h.id_cliente = cp.id_cliente AND h.proyecto_id = cp.proyecto_id
     LEFT JOIN usuarios u ON h.asesor_id = u.id
     ${whereClause}
-    AND cp.datos->>'estado' IN ('completado','no_cliente','error')
+    AND cp.datos->>'estado' IN ('completado','no_cliente','sin_datos','no_cargable','error')
     ORDER BY h.created_at DESC LIMIT $${pi++}
   `;
   params.push(limit);

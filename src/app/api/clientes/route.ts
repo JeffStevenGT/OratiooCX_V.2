@@ -1,6 +1,11 @@
 /**
  * app/api/clientes/route.ts — Clientes con datos del bot (Orange)
  * Soporta paginación server-side: ?from=YYYY-MM-DD&to=YYYY-MM-DD&page=1&limit=50
+ * 
+ * Optimización: extrae solo campos necesarios del JSONB datos (no el blob completo).
+ * Las líneas se reducen a 4 campos (numero, tiene_renove, variante_renove, es_cima)
+ * porque son los únicos que usan los filtros del frontend.
+ * La ficha expandida carga datos completos vía /api/clientes/[id].
  */
 
 import { NextResponse } from 'next/server';
@@ -43,7 +48,7 @@ function transformarCliente(r: any) {
     }
   }
 
-  // Extraer fecha y hora del timestamp (hora Madrid = servidor)
+  // Extraer fecha y hora del timestamp
   const ts = r.ultima_extraccion ? new Date(r.ultima_extraccion) : null;
   const fecha = ts ? ts.toISOString().slice(0, 10) : '';
   const hora = ts ? ts.toTimeString().slice(0, 8) : '';
@@ -71,12 +76,11 @@ function transformarCliente(r: any) {
   };
 }
 
-function buildWhere(params: any[], from: string, to: string) {
+function buildConditions(params: any[], from: string, to: string) {
   const conditions: string[] = [];
-  conditions.push(`cp.proyecto_id = p.pid`);
-  conditions.push(`cp.datos->>'estado' IN ('completado', 'no_cliente', 'sin_datos', 'error')`);
-  if (from) { conditions.push(`cp.ultima_extraccion AT TIME ZONE 'America/Lima' >= $${params.length + 1}::date`); params.push(from); }
-  if (to) { conditions.push(`cp.ultima_extraccion AT TIME ZONE 'America/Lima' < $${params.length + 1}::date + interval '1 day'`); params.push(to); }
+  conditions.push(`cp.datos->>'estado' IN ('completado', 'no_cliente', 'sin_datos', 'no_cargable', 'error')`);
+  if (from) { conditions.push(`cp.ultima_extraccion >= $${params.length + 1}::date`); params.push(from); }
+  if (to) { conditions.push(`cp.ultima_extraccion < $${params.length + 1}::date + interval '1 day'`); params.push(to); }
   return conditions.join(' AND ');
 }
 
@@ -89,14 +93,13 @@ export async function GET(req: Request) {
     const limit = Math.min(50000, Math.max(10, parseInt(searchParams.get('limit') || '50')));
 
     const params: any[] = [];
-    const where = buildWhere(params, from, to);
+    const conditions = buildConditions(params, from, to);
+    const where = `cp.proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'orange') AND ${conditions}`;
 
-    // Count total
+    // Count total — sin JOIN a clientes (más rápido)
     const countResult = await pool.query(
       `SELECT count(*)::int as total
-       FROM clientes c
-       CROSS JOIN (SELECT id AS pid FROM proyectos WHERE nombre = 'orange') p
-       JOIN clientes_proyectos cp ON c.id_cliente = cp.id_cliente
+       FROM clientes_proyectos cp
        WHERE ${where}`,
       params
     );
@@ -104,24 +107,47 @@ export async function GET(req: Request) {
     const totalPages = Math.ceil(total / limit);
     const offset = (page - 1) * limit;
 
-    // Fetch page
+    // Fetch page — extrae solo campos necesarios del JSONB
     const { rows } = await pool.query(
-      `WITH proyecto AS (SELECT id AS pid FROM proyectos WHERE nombre = 'orange')
-       SELECT
+      `SELECT
          c.id_cliente, c.tipo_documento, c.numero_documento,
          c.nombre_razon_social, c.tipo_persona,
          c.whatsapp_opt_in, c.whatsapp_numero, c.alertas_fidelizacion,
-         cp.datos, cp.ultima_extraccion, cp.updated_at
-       FROM clientes c
-       CROSS JOIN proyecto p
-       JOIN clientes_proyectos cp ON c.id_cliente = cp.id_cliente
+         cp.ultima_extraccion, cp.updated_at,
+         cp.datos->>'estado' as _estado,
+         (cp.datos->>'cima_global')::boolean as _cima_global,
+         cp.datos->'header'->>'nombre' as _header_nombre,
+         cp.datos->'header'->>'paquete' as _header_paquete,
+         COALESCE(
+           (SELECT jsonb_agg(jsonb_build_object(
+             'numero', l->>'numero',
+             'tiene_renove', (l->>'tiene_renove')::boolean,
+             'variante_renove', l->>'variante_renove',
+             'es_cima', (l->>'es_cima')::boolean
+           )) FROM jsonb_array_elements(cp.datos->'lineas') l),
+           '[]'::jsonb
+         ) as lineas
+       FROM clientes_proyectos cp
+       JOIN clientes c ON c.id_cliente = cp.id_cliente
        WHERE ${where}
        ORDER BY cp.ultima_extraccion DESC NULLS LAST
        LIMIT ${limit} OFFSET ${offset}`,
       params
     );
 
-    const data = rows.map(transformarCliente);
+    // Reconstruir el objeto 'datos' que espera transformarCliente
+    const data = rows.map((r: any) => transformarCliente({
+      ...r,
+      datos: {
+        estado: r._estado,
+        cima_global: r._cima_global,
+        header: {
+          nombre: r._header_nombre || null,
+          paquete: r._header_paquete || null,
+        },
+        lineas: r.lineas || [],
+      },
+    }));
 
     return NextResponse.json({ data, total, page, totalPages, limit });
   } catch (error: any) {

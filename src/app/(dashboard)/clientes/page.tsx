@@ -63,6 +63,7 @@ export default function ClientesPage() {
   const [editingTipo, setEditingTipo] = useState<string | null>(null);
   const [deteccionesCache, setDeteccionesCache] = useState<Record<string, any[]>>({});
   const [timelineCache, setTimelineCache] = useState<Record<string, any[]>>({});
+  const [fichaCache, setFichaCache] = useState<Record<string, any>>({});
   const [loadingDetecciones, setLoadingDetecciones] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -226,6 +227,12 @@ export default function ClientesPage() {
     const params = new URLSearchParams();
     if (dateFrom) params.set('from', dateFrom);
     if (dateTo) params.set('to', dateTo);
+    if (search) params.set('q', search);
+    if (cimaFilter) params.set('cima', cimaFilter);
+    if (renoveFilter) params.set('renove', renoveFilter);
+    if (variantesActivas.length > 0) params.set('vars', variantesActivas.join(','));
+    if (tagsActivas.length > 0) params.set('tags', tagsActivas.join(','));
+    if (minLineasFilter > 1) params.set('minL', String(minLineasFilter));
     window.open(`/api/clientes/export?${params.toString()}`, '_blank');
   };
 
@@ -436,6 +443,7 @@ export default function ClientesPage() {
                             ]);
                             const detData = await detRes.json();
                             const tlData = await tlRes.json();
+                            setFichaCache(prev => ({ ...prev, [nuevo]: detData }));
                             setDeteccionesCache(prev => ({ ...prev, [nuevo]: detData.detecciones || [] }));
                             setTimelineCache(prev => ({ ...prev, [nuevo]: tlData.filter((e: any) => e.id_cliente === nuevo) }));
                           } catch { /* */ }
@@ -450,7 +458,9 @@ export default function ClientesPage() {
                         </td>
                         <td className="py-2.5 px-3 text-xs font-mono font-medium">{c.dni}</td>
                         <td className="py-2.5 px-3 text-xs max-w-[180px] truncate font-medium" title={c.nombre}>
-                          {c.estado === 'no_cliente' ? <span className="text-red-600 font-semibold">NO ES CLIENTE</span> : (c.nombre || '-')}
+                          {c.estado === 'no_cliente' ? <span className="text-red-600 font-semibold">NO ES CLIENTE</span>
+                           : c.estado === 'no_cargable' ? <span className="text-amber-600 font-semibold">NO CARGABLE</span>
+                           : (c.nombre || '-')}
                         </td>
                         <td className="py-2.5 px-3">
                           <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs border ${
@@ -477,7 +487,12 @@ export default function ClientesPage() {
                       </tr>
 
                       {/* ── FILA EXPANDIDA ── */}
-                      {isOpen && (
+                      {isOpen && (() => {
+                        const ficha = fichaCache[c.id_cliente];
+                        const datos = ficha?.datos || {};
+                        const lineasFull = datos.lineas || c.lineas || [];
+                        const headerFull = datos.header || c.header || {};
+                        return (
                         <tr key={`exp-${c.id_cliente}`}>
                           <td colSpan={10} className="p-0">
                             <div className="bg-[#f5ebf3]/30 border-b border-[#e8dce6] px-6 py-4 space-y-4">
@@ -490,7 +505,7 @@ export default function ClientesPage() {
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2 text-xs">
                                   <div><span className="text-[#7c757c]">Nombre:</span><p className="text-[#1a1030]">{c.nombre || '-'}</p></div>
                                   <div><span className="text-[#7c757c]">DNI:</span><p className="text-[#1a1030] font-mono">{c.dni}</p></div>
-                                  <div className="col-span-2"><span className="text-[#7c757c]">Dirección:</span><p className="text-[#1a1030]">{c.header?.direccion || '-'}</p></div>
+                                  <div className="col-span-2"><span className="text-[#7c757c]">Dirección:</span><p className="text-[#1a1030]">{headerFull.direccion || '-'}</p></div>
                                   <div><span className="text-[#7c757c]">CIMA global:</span>
                                     <span className={c.cima === 'SI' ? 'text-emerald-700 font-medium ml-1' : 'text-[#7c757c] ml-1'}>{c.cima === 'SI' ? 'SÍ' : 'NO'}</span>
                                   </div>
@@ -522,13 +537,14 @@ export default function ClientesPage() {
 
                               {/* ── LÍNEAS (agrupadas por paquete) ── */}
                               <h4 className="text-sm font-semibold text-[#1a1030] flex items-center gap-2">
-                                <Phone size={14} className="text-[#0a6ea9]" /> Líneas ({lineas.length})
+                                <Phone size={14} className="text-[#0a6ea9]" /> Líneas ({lineasFull.length})
                               </h4>
 
-                              {(() => {
-                                // Agrupar por paquete_tariff
+                              {ficha && lineasFull.length > 0 ? (
+                              (() => {
+                                // Agrupar por paquete
                                 const grupos: Record<string, any[]> = {};
-                                for (const l of lineas) {
+                                for (const l of lineasFull) {
                                   const pkg = l.paquete || 'Sin paquete';
                                   if (!grupos[pkg]) grupos[pkg] = [];
                                   grupos[pkg].push(l);
@@ -569,9 +585,9 @@ export default function ClientesPage() {
                                                       <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${l.estado_linea_resumen === 'Activa' ? 'bg-emerald-50 text-emerald-700' : l.estado_linea_resumen !== 'N/A' ? 'bg-red-50 text-red-700' : 'text-[#7c757c]'}`}>
                                                         {l.estado_linea_resumen}
                                                       </span>
-                                                      {l.estado_linea.filter((e: any) => e.activo).length > 0 && (
+                                                      {(l.estado_detallado || []).filter((e: any) => e.activo).length > 0 && (
                                                         <div className="flex gap-0.5">
-                                                          {l.estado_linea.filter((e: any) => e.activo).map((e: any, i: number) => (
+                                                          {(l.estado_detallado || []).filter((e: any) => e.activo).map((e: any, i: number) => (
                                                             <span key={i} className="text-[9px] px-1 py-0.5 rounded bg-red-50 text-red-700 border border-red-200">{e.texto}</span>
                                                           ))}
                                                         </div>
@@ -621,7 +637,14 @@ export default function ClientesPage() {
                                     ))}
                                   </div>
                                 );
-                              })()}
+                              })()
+                              ) : ficha ? (
+                                <p className="text-xs text-[#7c757c] italic">Sin líneas registradas</p>
+                              ) : (
+                                <div className="flex items-center gap-2 text-xs text-[#7c757c]">
+                                  <Loader2 size={12} className="animate-spin" /> Cargando datos completos...
+                                </div>
+                              )}
 
                               {/* Si es no_cliente */}
                               {c.estado === 'no_cliente' && (
@@ -643,7 +666,7 @@ export default function ClientesPage() {
                               ) : deteccionesCache[c.id_cliente] && deteccionesCache[c.id_cliente].length === 0 && (
                                 <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3">
                                   <p className="text-xs text-emerald-700 flex items-center gap-1.5">
-                                    <TrendingUp size={12} /> <strong>Análisis inicial</strong> — {lineas.length} líneas registradas
+                                    <TrendingUp size={12} /> <strong>Análisis inicial</strong> — {lineasFull.length} líneas registradas
                                   </p>
                                   <p className="text-[10px] text-emerald-600/70 mt-1">La próxima extracción detectará cambios reales.</p>
                                 </div>
@@ -690,7 +713,8 @@ export default function ClientesPage() {
                             </div>
                           </td>
                         </tr>
-                      )}
+                      );
+                    })()}
                     </Fragment>
                   );
                 })}
