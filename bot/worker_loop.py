@@ -189,9 +189,10 @@ def extraer_datos_estructurados(page, dni):
 
     primera = lineas_basicas[0]
 
-    # Detectar "no es cliente" explícito (incluye PYME, GGCC, MAX LINEAS)
-    if primera.get("Nombre") in ("NO ES CLIENTE", "CLIENTE PYME", "CLIENTE GGCC", "CLIENTE MAX LINEAS"):
-        return {"estado": "no_cliente"}
+    # Detectar label de Pangea (estado dinámico desde login.py)
+    if primera.get("_estado") and primera.get("_estado") != "completado":
+        label = primera.get("_label", primera.get("_estado", "no_cliente"))
+        return {"estado": primera["_estado"], "label_pangea": label}
 
     # Detectar cliente ya procesado (búsqueda por teléfono encontró DNI existente)
     if primera.get("Nombre") == "YA_PROCESADO" or primera.get("_skip"):

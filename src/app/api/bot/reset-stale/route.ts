@@ -26,10 +26,7 @@ export async function POST(req: Request) {
     const { rowCount } = await pool.query(
       `WITH proyecto AS (SELECT id AS pid FROM proyectos WHERE nombre = 'orange')
        UPDATE clientes_proyectos cp
-       SET datos = jsonb_set(
-              jsonb_set(datos, '{estado}', '"pendiente"'),
-              '{version_extraccion}', '0'
-            ),
+       SET datos = jsonb_set(datos, '{estado}', '"pendiente"'),
            updated_at = now()
        FROM proyecto p
        WHERE cp.proyecto_id = p.pid

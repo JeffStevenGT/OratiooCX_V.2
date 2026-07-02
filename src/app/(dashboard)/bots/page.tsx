@@ -13,7 +13,7 @@ type ProxyInfo = { ip: string; port: string; user: string; pass: string; raw: st
 type Maquina = { id: number; nombre: string; ip: string | null; workers_max: number; workers_activos: number; estado: string; ultimo_heartbeat: string | null };
 
 export default function AppsPage() {
-  const [tab, setTab] = useState<'control' | 'proxies' | 'maquinas' | 'config'>('control');
+  const [tab, setTab] = useState<'dashboard' | 'control' | 'proxies' | 'maquinas' | 'config'>('dashboard');
 
   // ── Control ──
   const [sending, setSending] = useState<string | null>(null);
@@ -64,7 +64,7 @@ export default function AppsPage() {
   useEffect(() => { fetchMaquinas(); fetchProxies(); }, [fetchMaquinas, fetchProxies]);
 
   const onlineCount = ctrlMaquinas.filter(m => m.estado === 'online').length;
-  const totalWorkers = ctrlMaquinas.reduce((s, m) => s + m.workers_activos, 0);
+  const totalWorkers = ctrlMaquinas.filter(m => m.estado === 'online').reduce((s, m) => s + m.workers_activos, 0);
 
   // ── Control Workers ──
   const sendCommand = async (cmd: string, label: string, extra: any = {}) => { setSending(cmd); setStatusMsg(`Enviando "${label}"...`);
@@ -83,7 +83,7 @@ export default function AppsPage() {
 
   // ── Máquinas CRUD ──
   const handleAddMachine = async () => { if (!newMachine.nombre) return; setAddingMachine(true); setError('');
-    try { const res = await fetch('/api/maquinas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newMachine) }); if (!res.ok) throw new Error((await res.json()).error || 'Error'); setNewMachine({ nombre: '', ip: '', workers: 5, notas: '' }); setShowAddMachine(false); fetchMaquinas(); } catch (e: any) { setError(e.message); } setAddingMachine(false); };
+    try { const res = await fetch('/api/maquinas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nombre: newMachine.nombre, ip: newMachine.ip, workers_max: newMachine.workers, notas: newMachine.notas }) }); if (!res.ok) throw new Error((await res.json()).error || 'Error'); setNewMachine({ nombre: '', ip: '', workers: 5, notas: '' }); setShowAddMachine(false); fetchMaquinas(); } catch (e: any) { setError(e.message); } setAddingMachine(false); };
   const handleDeleteMachine = async (id: number) => { setError('');
     try { const res = await fetch('/api/maquinas', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); if (!res.ok) throw new Error((await res.json()).error || 'Error'); fetchMaquinas(); } catch (e: any) { setError(e.message); } };
 
@@ -119,6 +119,7 @@ export default function AppsPage() {
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 w-fit">
         {([
+          ['dashboard', 'Dashboard', Activity],
           ['control', 'Control', Activity],
           ['proxies', 'Proxies', Wifi],
           ['maquinas', 'Máquinas', Server],
@@ -142,6 +143,9 @@ export default function AppsPage() {
           <button onClick={() => setError('')} className="ml-auto text-red-400 hover:text-red-600">×</button>
         </div>
       )}
+
+      {/* ─── TAB: Dashboard ─── */}
+      {tab === 'dashboard' && <DashboardPanel maquinas={maquinas} />}
 
       {/* ─── TAB: Control ─── */}
       {tab === 'control' && (<>
@@ -429,6 +433,73 @@ export default function AppsPage() {
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Dashboard Panel ──
+function DashboardPanel({ maquinas }: { maquinas: Maquina[] }) {
+  const [stats, setStats] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try { const res = await fetch('/api/bot/stats'); if (res.ok) setStats(await res.json()); } catch {}
+    };
+    fetchStats();
+    const interval = setInterval(fetchStats, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const online = maquinas.filter(m => m.estado === 'online');
+  const totalWorkers = online.reduce((s, m) => s + (m.workers_activos || 0), 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Status */}
+      <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${stats?.online ? 'border-emerald-200 bg-emerald-50 dark:bg-emerald-900/20' : 'border-gray-200 bg-gray-50 dark:bg-gray-800'}`}>
+        <span className={`w-3 h-3 rounded-full ${stats?.online ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+        <span className="text-sm font-medium">{stats?.online ? 'Apps activas' : 'Apps offline'}</span>
+        <span className="text-xs text-gray-500 ml-auto">{online.length} máquinas · {totalWorkers} workers</span>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-4 gap-3">
+        <KpiCard label="Procesados hoy" value={stats?.procesadosHoy || 0} color="blue" />
+        <KpiCard label="Velocidad" value={`${stats?.velocidad || 0}/min`} color="emerald" />
+        <KpiCard label="Pendientes" value={stats?.pendientes || 0} color="amber" />
+        <KpiCard label="ETA" value={stats?.etaHoras ? (stats.etaHoras < 1 ? '< 1h' : `~${stats.etaHoras}h`) : '—'} color="purple" />
+      </div>
+
+      {/* Máquinas */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+        <h3 className="text-sm font-semibold mb-3">Máquinas</h3>
+        <div className="space-y-2">
+          {maquinas.map(m => (
+            <div key={m.id} className="flex items-center gap-3 text-xs">
+              <span className={`w-2 h-2 rounded-full ${m.estado === 'online' ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+              <span className="font-mono font-medium w-32 truncate">{m.nombre}</span>
+              <span className="text-gray-400">{m.workers_activos || 0}/{m.workers_max || 0} workers</span>
+              <span className="text-gray-400 ml-auto">{m.ultimo_heartbeat ? new Date(m.ultimo_heartbeat).toLocaleTimeString('es-PE') : '—'}</span>
+            </div>
+          ))}
+          {maquinas.length === 0 && <p className="text-xs text-gray-400">Sin máquinas registradas</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KpiCard({ label, value, color }: { label: string; value: string | number; color: string }) {
+  const colors: Record<string, string> = {
+    blue: 'bg-blue-50 border-blue-200 text-blue-700',
+    emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+    amber: 'bg-amber-50 border-amber-200 text-amber-700',
+    purple: 'bg-purple-50 border-purple-200 text-purple-700',
+  };
+  return (
+    <div className={`rounded-xl border px-4 py-3 text-center ${colors[color] || colors.blue}`}>
+      <p className="text-2xl font-bold">{typeof value === 'number' ? value.toLocaleString() : value}</p>
+      <p className="text-[10px] font-medium mt-0.5">{label}</p>
     </div>
   );
 }

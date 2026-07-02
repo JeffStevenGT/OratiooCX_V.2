@@ -59,6 +59,87 @@ def _reset_frozen():
     global _frozen_count
     _frozen_count = 0
 
+# -- Normalización dinámica de labels de Pangea --------
+
+# Labels canónicos: múltiples textos de Pangea → mismo estado
+_CANONICAL_LABELS = {
+    "no se han encontrado datos": "no_cliente",
+    "no se han encontrado datos para este cliente": "no_cliente",
+    "no se han encontrado": "no_cliente",
+    "cliente pyme": "pyme",
+    "cliente ggcc": "ggcc",
+    "supera el maximo de lineas permitidas": "max_lineas",
+    "no se han podido recuperar campanas": "sin_datos",
+    "cliente no cargable": "no_cargable",
+    "error campanas": "sin_datos",
+}
+
+def _normalizar_label(texto: str) -> str:
+    """Convierte un label de Pangea en un estado canónico y compacto.
+
+    Si el texto coincide con uno conocido → usa su nombre canónico.
+    Si no → lo normaliza dinámicamente (lowercase, espacios → _, trunc 40 chars).
+    """
+    if not texto:
+        return "completado"
+    t = texto.strip().lower()
+    # Quitar acentos
+    t = t.replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+    # Buscar match canónico
+    if t in _CANONICAL_LABELS:
+        return _CANONICAL_LABELS[t]
+    # Buscar por substring (ej: "No se han encontrado datos para este cliente" contiene "no se han encontrado")
+    for key, canonical in _CANONICAL_LABELS.items():
+        if key in t:
+            return canonical
+    # Normalización dinámica
+    import re
+    t = re.sub(r"[^a-z0-9 ]", "", t)  # quitar puntuación
+    t = re.sub(r"\s+", "_", t)        # espacios → _
+    t = t.strip("_")
+    return t[:40] if t else "completado"
+
+
+def _detectar_label_pangea(page, es_telefono: bool = False) -> dict | None:
+    """Escanea el modal de Pangea por cualquier label/mensaje visible.
+    
+    Retorna {"label": texto_original, "estado": estado_normalizado} o None.
+    
+    Busca en el contexto correcto según modo (doc vs tel).
+    """
+    # -- Selectores que cubren mensajes en ambas pestañas --
+    selectores_mensajes = [
+        # Mensajes de error en el modal (PYME, max líneas, no encontrado, etc.)
+        ".msg-error:visible",
+        # Texto informativo debajo del input
+        "span.txt:visible",
+        # Toast de error (campañas, no cargable)
+        ".toast-error:visible",
+        ".notification-container .message-relevant:visible",
+        # Label de tipo de cliente (puede aparecer en diferentes ubicaciones)
+        ".client-type-label:visible",
+        "[class*='label']:visible",
+    ]
+    
+    for selector in selectores_mensajes:
+        try:
+            matches = page.locator(selector)
+            for j in range(matches.count()):
+                try:
+                    el = matches.nth(j)
+                    if el.is_visible():
+                        texto = el.inner_text().strip()
+                        if texto and len(texto) > 2:
+                            estado = _normalizar_label(texto)
+                            _log(f"  [Label] Detectado: \"{texto}\" → estado={estado}")
+                            return {"label": texto, "estado": estado}
+                except Exception:
+                    continue
+        except Exception:
+            continue
+    
+    return None
+
 def _increment_frozen() -> bool:
     """Incrementa contador de congelamiento. Retorna True si alcanzo limite."""
     global _frozen_count
@@ -645,16 +726,19 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                 _log(f"  [Extracción] [!!] Navegacion externa tras procesar {numero} -- retornando vacio")
                 return []
 
-            # DETECTAR PYME (empresa) -- Pangea no cierra el modal
-            try:
-                pyme_matches = page.locator(".msg-error:has-text('Cliente PYME')")
-                pyme_visible = False
-                for j in range(pyme_matches.count()):
-                    if pyme_matches.nth(j).is_visible():
-                        pyme_visible = True
-                        break
-                if pyme_visible:
-                    _log(f"  [Extracción] [PYME] {numero} es empresa -- cerrando modal")
+            # === DETECCIÓN UNIFICADA DE LABELS EN EL MODAL ===
+            # Reemplaza PYME, MAX LINEAS, GGCC, NO CLIENTE: todos se detectan dinámicamente
+            label_info = _detectar_label_pangea(page, es_telefono)
+            if label_info and label_info["estado"] != "completado":
+                _reset_frozen()
+                estado = label_info["estado"]
+                label = label_info["label"]
+                _log(f"  [Extracción] [{estado.upper()}] {numero}: {label}")
+                
+                # no_cliente: modal se queda abierto (limpiar campo y escribir siguiente)
+                # otros (pyme, max_lineas, ggcc): cerrar modal
+                modal_abierto = (estado == "no_cliente")
+                if not modal_abierto:
                     try:
                         close_btn = page.locator("button.close[data-dismiss='modal']").last
                         if close_btn.count() > 0:
@@ -662,91 +746,10 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                             page.wait_for_timeout(500)
                     except Exception:
                         pass
-                    _reset_frozen()  # Pangea respondio (PYME)
-                    return [{
-                        "DNI": numero,
-                        "Nombre": "CLIENTE PYME",
-                        "Direccion": "N/A",
-                        "Seg Fijo": "N/A",
-                        "Seg Movil": "N/A",
-                        "Paquete": "N/A",
-                        "Linea": numero,
-                        "es_cima": False,
-                        "tiene_renove_mixto": False,
-                        "variante_renove": "N/A",
-                        "tiene_tv": False,
-                        "es_principal": False,
-                        "etiquetas": [],
-                        "activo_desde": "N/A",
-                        "producto": "N/A",
-                        "estado_linea": [],
-                        "permanencia": "N/A",
-                        "consumo": "N/A",
-                        "venta_plazos": "N/A",
-                        "campanas_extra": [],
-                        "_modal_abierto": False,
-                    }]
-            except Exception:
-                pass
-
-            # === DETECTAR MAXIMO DE LINEAS ("supera el maximo de lineas permitidas") ===
-            try:
-                max_lineas_matches = page.locator(".msg-error:has-text('supera el maximo de lineas permitidas')")
-                max_lineas_visible = False
-                for j in range(max_lineas_matches.count()):
-                    if max_lineas_matches.nth(j).is_visible():
-                        max_lineas_visible = True
-                        break
-                if max_lineas_visible:
-                    _log(f"  [Extraccion] [MAX-LINEAS] {numero} supera maximo de lineas -- cerrando modal")
-                    try:
-                        close_btn = page.locator("button.close[data-dismiss='modal']").last
-                        if close_btn.count() > 0:
-                            close_btn.click(force=True, timeout=3000)
-                            page.wait_for_timeout(500)
-                    except Exception:
-                        pass
-                    _reset_frozen()  # Pangea respondio (MAX LINEAS)
-                    return [{
-                        "DNI": numero, "Nombre": "CLIENTE MAX LINEAS", "Direccion": "N/A",
-                        "Seg Fijo": "N/A", "Seg Movil": "N/A", "Paquete": "N/A",
-                        "Linea": numero, "es_cima": False, "tiene_renove_mixto": False,
-                        "variante_renove": "N/A", "tiene_tv": False, "es_principal": False,
-                        "etiquetas": [], "activo_desde": "N/A", "producto": "N/A",
-                        "estado_linea": [], "permanencia": "N/A", "consumo": "N/A",
-                        "venta_plazos": "N/A", "campanas_extra": [], "_modal_abierto": False,
-                    }]
-            except Exception:
-                pass
-
-            # === DETECTAR "NO ES CLIENTE" ===
-            no_cliente_selectores = [
-                "span.txt:has-text('No se han encontrado datos')",
-                "span.txt:has-text('No se han encontrado datos para este cliente')",
-                ".msg-error:has-text('No se han encontrado')",
-            ]
-            es_no_cliente = False
-            for sel in no_cliente_selectores:
-                try:
-                    # [!!] Usar :visible para no agarrar el .msg-error oculto (ng-hide)
-                    matches = page.locator(sel)
-                    for j in range(matches.count()):
-                        if matches.nth(j).is_visible():
-                            es_no_cliente = True
-                            break
-                    if es_no_cliente:
-                        break
-                except Exception:
-                    continue
-
-            if es_no_cliente:
-                _reset_frozen()  # Pangea respondio — resetear contador de congelamiento
-                _log(f"  [Extracción] [FAIL] {numero} NO ES CLIENTE")
-                #  NO cerrar modal -- solo limpiar campo y escribir siguiente DNI
-                # El mensaje de error no bloquea el input
+                
                 return [{
                     "DNI": numero,
-                    "Nombre": "NO ES CLIENTE",
+                    "Nombre": label,
                     "Direccion": "N/A",
                     "Seg Fijo": "N/A",
                     "Seg Movil": "N/A",
@@ -765,10 +768,12 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     "consumo": "N/A",
                     "venta_plazos": "N/A",
                     "campanas_extra": [],
-                    "_modal_abierto": True,  # Modal sigue abierto, escribir siguiente DNI
+                    "_label": label,
+                    "_estado": estado,
+                    "_modal_abierto": modal_abierto,
                 }]
 
-            # === DETECTAR PANGEA CONGELADA (modal abierto SIN texto de error) ===
+            # === DETECTAR PANGEA CONGELADA (modal abierto SIN label) ===
             try:
                 if btn_buscar.is_visible():
                     # Modal abierto pero SIN texto explicito de no_cliente
@@ -832,11 +837,12 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                     "venta_plazos": "N/A",
                     "campanas_extra": [],
                     "_modal_abierto": True,
+                    "_label": "ERROR CAMPANAS",
+                    "_estado": "sin_datos",
                 }]
 
             _log("  [Extracción] Cargando ficha de cliente...")
             page.wait_for_timeout(800)
-            # Quick 2s check: si Pangea redirigió a /qualification
             # Quick 8s check: si Pangea redirigió a /qualification
             # [!!] Solo es dashboard si el hash esta vacio. Cualquier ruta = pagina de cliente.
             try:
@@ -869,6 +875,8 @@ def extraer_datos_cliente(page: Page, numero: str, buscar_por_dni: bool = True,
                             "estado_linea": [], "permanencia": "N/A", "consumo": "N/A",
                             "venta_plazos": "N/A", "campanas_extra": [],
                             "_modal_abierto": False,
+                            "_label": "CLIENTE NO CARGABLE",
+                            "_estado": "no_cargable",
                         }]
                     except Exception:
                         _log("  [Extracción] [!!] Sesión expirada (redirect a qualification sin NAC) — recuperando...")

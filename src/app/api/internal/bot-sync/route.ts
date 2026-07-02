@@ -86,13 +86,33 @@ function detectarCambios(datosViejos: any, datosNuevos: any): any[] {
     }
   }
 
-  // Detectar cambio de estado global (cliente → no_cliente o viceversa)
+  // Detectar cambio de estado global (dinámico, sin hardcodear)
   const viejoEstado = datosViejos?.estado;
   const nuevoEstado = datosNuevos?.estado;
-  if (viejoEstado === 'no_cliente' && nuevoEstado === 'completado') {
-    cambios.push({ tipo: 'cliente_recuperado', valor_nuevo: 'El cliente volvió a Orange' });
-  } else if ((viejoEstado === 'completado' || !viejoEstado) && nuevoEstado === 'no_cliente') {
-    cambios.push({ tipo: 'cliente_perdido', valor_nuevo: 'El cliente se fue de Orange' });
+  
+  // Solo detectar cambio si el estado anterior ya era conocido (no pendiente/null/error)
+  const estadosConDatos = new Set(['completado', 'no_cliente', 'pyme', 'ggcc', 'max_lineas', 'sin_datos', 'no_cargable']);
+  const viejoTeniaDatos = viejoEstado && estadosConDatos.has(viejoEstado);
+  const nuevoTieneDatos = nuevoEstado && estadosConDatos.has(nuevoEstado);
+  
+  if (viejoTeniaDatos && nuevoTieneDatos && viejoEstado !== nuevoEstado) {
+    cambios.push({
+      tipo: 'estado_cliente_cambio',
+      valor_anterior: viejoEstado,
+      valor_nuevo: nuevoEstado,
+      datos_extra: { de: viejoEstado, a: nuevoEstado },
+    });
+  } else if (!viejoTeniaDatos && nuevoTieneDatos) {
+    // Primera extracción con datos reales (venía de pendiente/null)
+    // No se registra como cambio, es el análisis inicial
+  } else if (viejoTeniaDatos && !nuevoTieneDatos) {
+    // Caso raro: tenía datos, ahora no (no debería pasar)
+    cambios.push({
+      tipo: 'estado_cliente_cambio',
+      valor_anterior: viejoEstado,
+      valor_nuevo: nuevoEstado || 'desconocido',
+      datos_extra: { de: viejoEstado, a: nuevoEstado || 'desconocido' },
+    });
   }
 
   // Cambio de paquete

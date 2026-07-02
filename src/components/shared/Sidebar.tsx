@@ -34,7 +34,7 @@ const MENU_ITEMS: { label: string; items: MenuItem[] }[] = [
       { to: '/asesor', icon: LayoutDashboard, label: 'Asesor', roles: ['asesor'] },
       { to: '/supervisor', icon: LayoutDashboard, label: 'Supervisor', roles: ['supervisor'] },
       { to: '/backoffice', icon: LayoutDashboard, label: 'BO', roles: ['back_office'] },
-      { to: '/admin', icon: LayoutDashboard, label: 'Admin', roles: ['it', 'desarrollador'] },
+      { to: '/extracciones', icon: BarChart3, label: 'Extracciones', roles: ['supervisor', 'jefe_area', 'it', 'desarrollador'] },
     ],
   },
   {

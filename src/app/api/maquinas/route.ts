@@ -6,6 +6,8 @@ import { NextResponse } from 'next/server';
 import pool from '@/lib/db';
 import { requireRole } from '@/lib/auth-roles';
 
+const BOT_API_KEY = process.env.BOT_API_KEY;
+
 // ── GET ──
 export async function GET() {
   try {
@@ -57,9 +59,15 @@ export async function DELETE(req: Request) {
   }
 }
 
-// ── PATCH (heartbeat) ──
+// ── PATCH (heartbeat — requiere API key del bot) ──
 export async function PATCH(req: Request) {
   try {
+    // Auth: API key del bot
+    const apiKey = req.headers.get('x-bot-api-key');
+    if (!BOT_API_KEY || apiKey !== BOT_API_KEY) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { nombre, workers_activos } = await req.json();
     if (!nombre) return NextResponse.json({ error: 'Falta nombre' }, { status: 400 });
 

@@ -14,6 +14,8 @@ export async function GET(req: Request) {
   const equipo = searchParams.get('equipo') || '';
   const asesorId = searchParams.get('asesor_id') || '';
   const mes = searchParams.get('mes') || new Date().toISOString().slice(0, 7); // "YYYY-MM"
+  const page = parseInt(searchParams.get('page') || '0');
+  const limit = parseInt(searchParams.get('limit') || '0'); // 0 = all
 
   try {
     const params: any[] = [proyectoId, desde, hasta];
@@ -134,9 +136,12 @@ export async function GET(req: Request) {
       asesores_activos: porAsesor.length,
     };
 
-    // ── 6. Ranking (top/bottom) ──
-    const ranking = porAsesor.map((a: any, i: number) => ({
-      posicion: i + 1,
+    // ── 6. Ranking with server-side pagination ──
+    const totalRanking = porAsesor.length;
+    const offset = page > 0 && limit > 0 ? (page - 1) * limit : 0;
+    const paginatedAsesores = (page > 0 && limit > 0) ? porAsesor.slice(offset, offset + limit) : porAsesor;
+    const ranking = paginatedAsesores.map((a: any, i: number) => ({
+      posicion: offset + i + 1,
       id: a.id,
       nombre: a.nombre,
       equipo: a.equipo,
@@ -225,6 +230,12 @@ export async function GET(req: Request) {
       porHora,
       diarias,
       periodo: { desde, hasta },
+      pagination: limit > 0 ? {
+        page,
+        limit,
+        total: totalRanking,
+        totalPages: Math.ceil(totalRanking / limit),
+      } : null,
     });
   } catch (e: any) {
     console.error('[api]', e.message);

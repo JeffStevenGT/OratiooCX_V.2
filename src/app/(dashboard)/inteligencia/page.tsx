@@ -2,20 +2,22 @@
  * app/(dashboard)/inteligencia/page.tsx — Inteligencia Comercial
  * ==============================================================
  * Scoring de leads, Forecast, Métricas de operadores, Salud de datos.
+ * V2: Lazy loading — cada tab carga sus datos solo al clickearse.
  */
 
 'use client';
 
-const PAGE_SIZES = [10, 25, 50, 100];
-
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   BrainCircuit, TrendingUp, BarChart3, Activity, Shield, AlertTriangle,
   Loader2, RefreshCw, Star, StarOff, Target, Calendar,
-  Users, Layers, Zap, Eye, Clock, ArrowUp, ArrowDown,
+  Users, Layers, Zap, Clock, Eye,
 } from 'lucide-react';
 import Skeleton from '@/components/shared/Skeleton';
 import FlipCard from '@/components/shared/FlipCard';
+import { useAPI, apiUrl } from '@/hooks/useSWR';
+
+const PAGE_SIZES = [10, 25, 50, 100];
 
 type ScoringData = {
   kpis: { total_evaluados: number; top_leads: number; calientes: number; frios: number; puntuacion_media: number };
@@ -27,11 +29,6 @@ type ForecastData = {
   historico: { fecha: string; ventas: number }[];
   prediccion: { fecha: string; ventas: number }[];
   resumen: { media_diaria: number; total_forecast: number; dias_forecast: number };
-};
-
-type MetricasData = {
-  contactabilidad: { nombre: string; total_llamadas: number; contestadas: number; tasa_contacto: number }[];
-  conversion: { nombre: string; contactados: number; ventas: number; tasa_conversion: number }[];
 };
 
 type SaludData = {
@@ -51,86 +48,39 @@ const NIVEL_COLORS: Record<string, string> = {
 };
 
 const NIVEL_EMOJI: Record<string, string> = {
-  'A+': '👑', 'A': '🟠', 'B': '🟡', 'C': '🟢', 'D': '⚪', 'E': '⚫',
+  'A+': '\uD83D\uDC51', 'A': '\uD83D\uDFE0', 'B': '\uD83D\uDFE1', 'C': '\uD83D\uDFE2', 'D': '\u26AA', 'E': '\u26AB',
 };
 
 export default function InteligenciaPage() {
   const [tab, setTab] = useState<'scoring' | 'forecast' | 'metricas' | 'salud'>('scoring');
+  // Track which tabs have been visited (so we don't re-fetch on every toggle)
+  const [visited, setVisited] = useState<Set<string>>(new Set(['scoring']));
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-
-  // Scoring
-  const [scoring, setScoring] = useState<ScoringData | null>(null);
-  const [scoringLoading, setScoringLoading] = useState(true);
-  const [scoringRecalc, setScoringRecalc] = useState(false);
-
-  // Forecast
-  const [forecast, setForecast] = useState<ForecastData | null>(null);
-  const [forecastLoading, setForecastLoading] = useState(true);
   const [forecastDias, setForecastDias] = useState(7);
 
-  // Métricas
-  const [metricas, setMetricas] = useState<MetricasData | null>(null);
-  const [metricasLoading, setMetricasLoading] = useState(true);
+  const selectTab = (t: typeof tab) => {
+    setTab(t);
+    setPage(1);
+    setVisited(prev => new Set(prev).add(t));
+  };
 
-  // Salud
-  const [salud, setSalud] = useState<SaludData | null>(null);
-  const [saludLoading, setSaludLoading] = useState(true);
+  // Only fetch when tab is visited (lazy)
+  const scoringUrl = visited.has('scoring') ? apiUrl('/api/dashboard/scoring') : null;
+  const forecastUrl = visited.has('forecast') ? apiUrl('/api/dashboard/forecast', { dias: '30', forecast: String(forecastDias) }) : null;
+  const rendimientoUrl = visited.has('metricas') ? apiUrl('/api/dashboard/rendimiento', { dias: '30' }) : null;
+  const saludUrl = visited.has('salud') ? apiUrl('/api/dashboard/salud-base', { dias: '90' }) : null;
 
-  const fetchScoring = useCallback(async () => {
-    setScoringLoading(true);
-    try {
-      const res = await fetch('/api/dashboard/scoring');
-      setScoring(await res.json());
-    } catch { /* */ }
-    setScoringLoading(false);
-  }, []);
-
-  const fetchForecast = useCallback(async () => {
-    setForecastLoading(true);
-    try {
-      const res = await fetch(`/api/dashboard/forecast?dias=30&forecast=${forecastDias}`);
-      setForecast(await res.json());
-    } catch { /* */ }
-    setForecastLoading(false);
-  }, [forecastDias]);
-
-  const fetchMetricas = useCallback(async () => {
-    setMetricasLoading(true);
-    try {
-      const res = await fetch('/api/dashboard/rendimiento?dias=30');
-      const data = await res.json();
-      setMetricas(data);
-    } catch { /* */ }
-    setMetricasLoading(false);
-  }, []);
-
-  const fetchSalud = useCallback(async () => {
-    setSaludLoading(true);
-    try {
-      const [abandonoRes, reutilRes, scoringRes] = await Promise.all([
-        fetch('/api/dashboard/abandono?dias=90'),
-        fetch('/api/dashboard/reutilizacion?dias=90'),
-        fetch('/api/dashboard/scoring-contactabilidad'),
-      ]);
-      const abandono = await abandonoRes.json();
-      const reutil = await reutilRes.json();
-      const scoringC = await scoringRes.json();
-      setSalud({ ...abandono, reutilizacion: reutil, scoring_contacto: scoringC.distribucion || [] });
-    } catch { /* */ }
-    setSaludLoading(false);
-  }, []);
-
-  useEffect(() => { fetchScoring(); fetchForecast(); fetchMetricas(); fetchSalud(); }, []);
-  useEffect(() => { setPage(1); }, [tab]);
+  const { data: scoring, isLoading: scoringLoading, mutate: mutateScoring } = useAPI<ScoringData>(scoringUrl);
+  const { data: forecast, isLoading: forecastLoading } = useAPI<ForecastData>(forecastUrl);
+  const { data: metricas, isLoading: metricasLoading } = useAPI<any>(rendimientoUrl);
+  const { data: salud, isLoading: saludLoading } = useAPI<SaludData>(saludUrl);
 
   const recalcularScoring = async () => {
-    setScoringRecalc(true);
     try {
       await fetch('/api/dashboard/scoring', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ proyecto_id: 1 }) });
-      await fetchScoring();
+      mutateScoring();
     } catch { /* */ }
-    setScoringRecalc(false);
   };
 
   const PaginationUI = ({ total, count }: { total: number; count: number }) => total > 1 ? (
@@ -170,7 +120,7 @@ export default function InteligenciaPage() {
       {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-600">
         {tabs.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
+          <button key={t.key} onClick={() => selectTab(t.key)}
             className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               tab === t.key ? 'border-[#0a6ea9] text-[#0a6ea9]' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:text-white'
             }`}>
@@ -182,7 +132,6 @@ export default function InteligenciaPage() {
       {/* ── SCORING ── */}
       {tab === 'scoring' && (
         <div className="space-y-5 animate-fade-in" key="scoring">
-          {/* KPIs */}
           {scoringLoading ? (
             <Skeleton variant="kpi" count={5} className="mb-5" />
           ) : scoring ? (
@@ -234,10 +183,9 @@ export default function InteligenciaPage() {
               <div className="card-sm">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Leads por Nivel</h3>
-                  <button onClick={recalcularScoring} disabled={scoringRecalc}
+                  <button onClick={recalcularScoring}
                     className="btn-primary flex items-center gap-1.5 text-xs px-3 py-1.5">
-                    <RefreshCw size={11} className={scoringRecalc ? 'animate-spin' : ''} />
-                    {scoringRecalc ? 'Calculando...' : 'Recalcular'}
+                    <RefreshCw size={11} /> Recalcular
                   </button>
                 </div>
                 {scoring.leads?.length > 0 ? (
@@ -309,7 +257,6 @@ export default function InteligenciaPage() {
                 </FlipCard>
               </div>
 
-              {/* Gráfico de barras histórico + forecast */}
               <div className="card-sm">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Histórico + Predicción</h3>
@@ -377,79 +324,46 @@ export default function InteligenciaPage() {
             <Skeleton variant="table" rows={6} cols={5} />
           ) : metricas ? (
             <>
-              {/* Contactabilidad */}
+              {/* Usamos el ranking de rendimiento como tabla de métricas */}
               <div className="card-sm">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Contactabilidad por Operador</h3>
-                {metricas.contactabilidad?.length > 0 ? (() => {
-                  const cAll = metricas.contactabilidad || [];
-                  const ctTotal = Math.ceil(cAll.length / pageSize);
-                  const ctPaged = cAll.slice((page - 1) * pageSize, page * pageSize);
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Ranking de operadores</h3>
+                {metricas.ranking?.length > 0 ? (() => {
+                  const rAll = metricas.ranking || [];
+                  const rtTotal = Math.ceil(rAll.length / pageSize);
+                  const rtPaged = rAll.slice((page - 1) * pageSize, page * pageSize);
                   return (<>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead className="bg-gray-50 dark:bg-gray-800">
                         <tr>
                           <th className="px-3 py-2 text-left">Asesor</th>
-                          <th className="px-3 py-2 text-center">Llamadas</th>
-                          <th className="px-3 py-2 text-center">Contestadas</th>
-                          <th className="px-3 py-2 text-center">Tasa Contacto</th>
+                          <th className="px-3 py-2 text-center">Ventas</th>
+                          <th className="px-3 py-2 text-center">Contact.</th>
+                          <th className="px-3 py-2 text-center">Contactab.</th>
+                          <th className="px-3 py-2 text-center">Efectiv.</th>
+                          <th className="px-3 py-2 text-center">Tasa Cont.</th>
+                          <th className="px-3 py-2 text-center">Ocupac.</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {ctPaged.map((a: any, i: number) => (
-                          <tr key={i} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:bg-gray-800">
+                        {rtPaged.map((a: any) => (
+                          <tr key={a.id} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:bg-gray-800">
                             <td className="px-3 py-2 font-medium">{a.nombre}</td>
-                            <td className="px-3 py-2 text-center">{a.total_llamadas}</td>
-                            <td className="px-3 py-2 text-center">{a.contestadas}</td>
-                            <td className="px-3 py-2 text-center">
-                              <span className={`font-bold ${a.tasa_contacto >= 50 ? 'text-emerald-600' : a.tasa_contacto >= 30 ? 'text-amber-600' : 'text-red-500'}`}>
-                                {a.tasa_contacto}%
-                              </span>
-                            </td>
+                            <td className="px-3 py-2 text-center font-bold text-[#481163]">{a.ventas}</td>
+                            <td className="px-3 py-2 text-center">{a.contactados}</td>
+                            <td className="px-3 py-2 text-center">{a.contactabilidad}%</td>
+                            <td className="px-3 py-2 text-center">{a.efectividad}%</td>
+                            <td className="px-3 py-2 text-center">{a.tasa_contestacion}%</td>
+                            <td className="px-3 py-2 text-center">{a.ocupacion}%</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                  {ctTotal > 1 && <PaginationUI total={ctTotal} count={cAll.length} />}
+                  {rtTotal > 1 && <PaginationUI total={rtTotal} count={rAll.length} />}
                   </>);
                 })() : (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 py-8 text-center">Sin datos de contactabilidad.</p>
-                )}
-              </div>
-
-              {/* Conversión */}
-              <div className="card-sm">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Conversión Contacto → Venta</h3>
-                {metricas.conversion?.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead className="bg-gray-50 dark:bg-gray-800">
-                        <tr>
-                          <th className="px-3 py-2 text-left">Asesor</th>
-                          <th className="px-3 py-2 text-center">Contactados</th>
-                          <th className="px-3 py-2 text-center">Ventas</th>
-                          <th className="px-3 py-2 text-center">Conversión</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {metricas.conversion.map((a: any, i: number) => (
-                          <tr key={i} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:bg-gray-800">
-                            <td className="px-3 py-2 font-medium">{a.nombre}</td>
-                            <td className="px-3 py-2 text-center">{a.contactados}</td>
-                            <td className="px-3 py-2 text-center font-bold">{a.ventas}</td>
-                            <td className="px-3 py-2 text-center">
-                              <span className={`font-bold ${a.tasa_conversion >= 20 ? 'text-emerald-600' : a.tasa_conversion >= 10 ? 'text-amber-600' : 'text-red-500'}`}>
-                                {a.tasa_conversion}%
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 py-8 text-center">Sin datos de conversión.</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 py-8 text-center">Sin datos de métricas.</p>
                 )}
               </div>
             </>
@@ -466,7 +380,6 @@ export default function InteligenciaPage() {
             <Skeleton variant="kpi" count={4} />
           ) : salud ? (
             <>
-              {/* KPIs */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <FlipCard back="Leads abandonados por diversas causas">
                   <KpiCard label="Total Abandonados" value={salud.total_abandonados || 0} icon={AlertTriangle} color="red" suffix=" leads" />
@@ -508,58 +421,41 @@ export default function InteligenciaPage() {
                 )}
               </div>
 
-              {/* Scoring Contacto */}
-              <div className="card-sm">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Contactabilidad por Nivel</h3>
-                {salud.scoring_contacto?.length > 0 ? (
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {salud.scoring_contacto.map((s: any, i: number) => (
-                      <div key={i} className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-center border border-gray-200 dark:border-gray-700">
-                        <p className="text-lg font-bold text-gray-900 dark:text-white">{s.total}</p>
-                        <p className="text-[10px] text-gray-500 dark:text-gray-400">{s.nivel_contacto}</p>
-                      </div>
-                    ))}
+              {/* Scoring Contactabilidad */}
+              {salud.scoring_contacto?.length > 0 && (
+                <div className="card-sm">
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Scoring de Contactabilidad</h3>
+                  <div className="flex items-end gap-2 h-24">
+                    {salud.scoring_contacto.map((d: any) => {
+                      const max = Math.max(...salud.scoring_contacto.map((x: any) => x.total || 0), 1);
+                      const pct = ((d.total || 0) / max) * 100;
+                      return (
+                        <div key={d.nivel_contacto} className="flex-1 flex flex-col items-center gap-1">
+                          <span className="text-xs font-bold text-gray-900 dark:text-white">{d.total}</span>
+                          <div className="w-full rounded-t-md bg-[#0a6ea9]" style={{ height: `${Math.max(pct, 4)}%`, opacity: 0.7 }} />
+                          <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400">{d.nivel_contacto}</span>
+                        </div>
+                      );
+                    })}
                   </div>
-                ) : (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 py-4 text-center">Sin datos.</p>
-                )}
-              </div>
+                </div>
+              )}
             </>
           ) : (
             <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-12">Error al cargar salud de datos.</p>
           )}
         </div>
       )}
-
-      {/* ── Info ── */}
-      <div className="mt-8 card-sm bg-gray-50 dark:bg-gray-800 dark:bg-[#1e1a2a] border-dashed border-gray-200 dark:border-gray-600 dark:border-[#2a1f3a]">
-        <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">💡 ¿Cómo funciona?</h3>
-        <ul className="space-y-1 text-[11px] text-gray-500 dark:text-gray-400">
-          <li>· Scoring predictivo de leads, forecast de ventas y salud de datos. Basado en CIMA, Renove, permanencia y consumo.</li>
-        </ul>
-      </div>
     </div>
   );
 }
 
-function KpiCard({ label, value, icon: Icon, color, suffix }: {
-  label: string; value: string | number; icon: any; color: string; suffix?: string;
-}) {
-  const colors: Record<string, string> = {
-    slate: 'bg-slate-50 text-slate-700', red: 'bg-red-50 text-red-700',
-    orange: 'bg-orange-50 text-orange-700', blue: 'bg-blue-50 text-blue-700',
-    emerald: 'bg-emerald-50 text-emerald-700', purple: 'bg-purple-50 text-purple-700',
-    gray: 'bg-gray-50 text-gray-600',
-  };
+function KpiCard({ icon: Icon, label, value, color, suffix = '' }: any) {
   return (
-    <div className={`rounded-xl p-4 border ${colors[color] || colors.slate} bg-opacity-50`}>
-      <div className="flex items-center gap-2 mb-1">
-        <Icon size={14} />
-        <span className="text-[10px] font-semibold uppercase tracking-wider">{label}</span>
-      </div>
-      <p className="text-2xl font-bold">
-        {value}{suffix && <span className="text-sm font-normal opacity-70">{suffix}</span>}
-      </p>
+    <div className="card text-center py-3">
+      <Icon size={20} className={`mx-auto mb-1 ${color === 'red' ? 'text-red-500' : color === 'orange' ? 'text-orange-500' : color === 'emerald' ? 'text-emerald-600' : color === 'blue' ? 'text-blue-600' : color === 'purple' ? 'text-purple-600' : color === 'slate' ? 'text-slate-600' : 'text-gray-500'}`} />
+      <p className="text-xl font-bold text-gray-900 dark:text-white">{value}{suffix}</p>
+      <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{label}</p>
     </div>
   );
 }

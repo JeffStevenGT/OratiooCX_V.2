@@ -136,8 +136,7 @@ async function clasificarDni(id_cliente: string): Promise<'nuevo' | 'ignorar_act
 
   // Ver pipeline activo
   const { rows: [pipe] } = await pool.query(
-    `SELECT estado, ultimo_cambio, deleted_at,
-            COALESCE(intentos, 0) as intentos
+    `SELECT estado, ultimo_cambio, deleted_at
      FROM pipeline
      WHERE id_cliente = $1 AND proyecto_id = 1
      ORDER BY created_at DESC LIMIT 1`,
@@ -155,8 +154,6 @@ async function clasificarDni(id_cliente: string): Promise<'nuevo' | 'ignorar_act
 
   // Pipeline activo (el asesor lo está trabajando)
   if (['pendiente', 'contactado', 'interesado', 'negociacion'].includes(pipe.estado)) {
-    if (pipe.intentos > 0) return 'ignorar_cooldown'; // ya se intentó, en ciclo
-    if (diasDesdeCierre < 7) return 'ignorar_activo'; // recién asignado
     return 'ignorar_activo';
   }
 
@@ -217,40 +214,101 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No se detectaron DNIs ni telefonos validos en el archivo' }, { status: 400 });
     }
 
-    // ── Clasificar y procesar ──
+    // ── Clasificar en lote (evita N+1 queries) ──
+    const ids_cliente = entradas.map(e => buildIdCliente(e.input).id_cliente);
+    
+    // 1 query: todos los clientes existentes
+    const { rows: existentes } = await pool.query(
+      `SELECT id_cliente FROM clientes WHERE id_cliente = ANY($1::text[])`,
+      [ids_cliente]
+    );
+    const existenSet = new Set(existentes.map((r: any) => r.id_cliente));
+
+    // 1 query: pipelines activos de todos
+    const { rows: pipelines } = await pool.query(
+      `SELECT DISTINCT ON (id_cliente) id_cliente, estado, ultimo_cambio, deleted_at
+       FROM pipeline
+       WHERE id_cliente = ANY($1::text[]) AND proyecto_id = 1
+       ORDER BY id_cliente, created_at DESC`,
+      [ids_cliente]
+    );
+    const pipeMap = new Map(pipelines.map((p: any) => [p.id_cliente, p]));
+
+    // 1 query: entradas existentes en clientes_proyectos
+    const { rows: existentesCp } = await pool.query(
+      `SELECT id_cliente FROM clientes_proyectos
+       WHERE id_cliente = ANY($1::text[])
+         AND proyecto_id = (SELECT id FROM proyectos WHERE nombre = 'orange')`,
+      [ids_cliente]
+    );
+    const existenCpSet = new Set(existentesCp.map((r: any) => r.id_cliente));
+
+    // Procesar en memoria
     let nuevos = 0, reabiertos = 0, ignorados = 0;
     const ignoradosDetalle: string[] = [];
     let nuevosDni = 0, nuevosTel = 0;
+    const insertsClientes: any[][] = [];
+    const insertsProyectos: any[][] = [];
+    const updatesReabrir: string[] = [];
 
     for (const entrada of entradas) {
       const input = entrada.input;
       const { id_cliente, tipo, numero } = buildIdCliente(input);
       const tipo_persona = tipo === 'NIF' ? 'empresa' : 'natural';
 
-      const clasificacion = await clasificarDni(id_cliente);
+      // Clasificar en memoria
+      let clasificacion: string;
+      if (!existenSet.has(id_cliente)) {
+        clasificacion = 'nuevo';
+      } else if (existenCpSet.has(id_cliente)) {
+        // Ya existe en clientes_proyectos → ver si reabrir o ignorar
+        const pipe = pipeMap.get(id_cliente);
+        if (!pipe || pipe.deleted_at) {
+          clasificacion = 'ignorar_activo';
+        } else {
+          const estado = pipe.estado;
+          const diasDesdeCierre = pipe.ultimo_cambio
+            ? Math.floor((Date.now() - new Date(pipe.ultimo_cambio).getTime()) / 86400000)
+            : 999;
+          if (['pendiente', 'contactado', 'interesado', 'negociacion'].includes(estado)) {
+            clasificacion = 'ignorar_activo';
+          } else if (estado === 'no_contesta') {
+            clasificacion = 'ignorar_cooldown';
+          } else if (diasDesdeCierre > 30) {
+            clasificacion = 'reabrir';
+          } else {
+            clasificacion = 'ignorar_reciente';
+          }
+        }
+      } else {
+        const pipe = pipeMap.get(id_cliente);
+        if (!pipe || pipe.deleted_at) {
+          clasificacion = 'nuevo';
+        } else {
+          const estado = pipe.estado;
+          const diasDesdeCierre = pipe.ultimo_cambio
+            ? Math.floor((Date.now() - new Date(pipe.ultimo_cambio).getTime()) / 86400000)
+            : 999;
+
+          if (['pendiente', 'contactado', 'interesado', 'negociacion'].includes(estado)) {
+            clasificacion = 'ignorar_activo';
+          } else if (estado === 'no_contesta') {
+            clasificacion = 'ignorar_cooldown';
+          } else if (diasDesdeCierre > 30) {
+            clasificacion = 'reabrir';
+          } else {
+            clasificacion = 'ignorar_reciente';
+          }
+        }
+      }
 
       if (clasificacion === 'nuevo') {
-        await pool.query(
-          `INSERT INTO clientes (id_cliente, tipo_documento, numero_documento, tipo_persona)
-           VALUES ($1, $2, $3, $4) ON CONFLICT (id_cliente) DO NOTHING`,
-          [id_cliente, tipo, numero, tipo_persona]
-        );
-        await pool.query(
-          `INSERT INTO clientes_proyectos (id_cliente, proyecto_id, datos)
-           VALUES ($1, (SELECT id FROM proyectos WHERE nombre = 'orange' LIMIT 1), $2)
-           ON CONFLICT (id_cliente, proyecto_id) DO NOTHING`,
-          [id_cliente, JSON.stringify({ estado: 'pendiente' })]
-        );
+        insertsClientes.push([id_cliente, tipo, numero, tipo_persona]);
+        insertsProyectos.push([id_cliente]);
         nuevos++;
         if (entrada.source === 'tel') nuevosTel++; else nuevosDni++;
       } else if (clasificacion === 'reabrir') {
-        await pool.query(
-          `UPDATE clientes_proyectos
-           SET datos = jsonb_set(datos, '{estado}', '"pendiente"'),
-               updated_at = now()
-           WHERE id_cliente = $1 AND proyecto_id = 1`,
-          [id_cliente]
-        );
+        updatesReabrir.push(id_cliente);
         reabiertos++;
       } else {
         ignorados++;
@@ -258,6 +316,50 @@ export async function POST(req: Request) {
           ignoradosDetalle.push(`${numero} (${clasificacion.replace('ignorar_', '')})`);
         }
       }
+    }
+
+    // Insertar en lote (chunks de 5000 para no exceder límite de PostgreSQL)
+    const CHUNK = 5000;
+    
+    if (insertsClientes.length > 0) {
+      for (let i = 0; i < insertsClientes.length; i += CHUNK) {
+        const chunk = insertsClientes.slice(i, i + CHUNK);
+        const vals = chunk.map((_, j) => 
+          `($${j*4+1}, $${j*4+2}, $${j*4+3}, $${j*4+4})`
+        ).join(', ');
+        const flat = chunk.flat();
+        await pool.query(
+          `INSERT INTO clientes (id_cliente, tipo_documento, numero_documento, tipo_persona)
+           VALUES ${vals} ON CONFLICT (id_cliente) DO NOTHING`, flat);
+      }
+    }
+    if (insertsProyectos.length > 0) {
+      const { rows: [proy] } = await pool.query(
+        `SELECT id FROM proyectos WHERE nombre = 'orange' LIMIT 1`
+      );
+      const proyectoId = proy?.id || 1;
+      for (let i = 0; i < insertsProyectos.length; i += CHUNK) {
+        const chunk = insertsProyectos.slice(i, i + CHUNK);
+        const vals = chunk.map((_, j) => 
+          `($${j*3+1}, $${j*3+2}, $${j*3+3})`
+        ).join(', ');
+        const flat: any[] = [];
+        for (const [id_cliente] of chunk) {
+          flat.push(id_cliente, proyectoId, JSON.stringify({ estado: 'pendiente' }));
+        }
+        await pool.query(
+          `INSERT INTO clientes_proyectos (id_cliente, proyecto_id, datos)
+           VALUES ${vals} ON CONFLICT (id_cliente, proyecto_id) DO NOTHING`, flat);
+      }
+    }
+    if (updatesReabrir.length > 0) {
+      await pool.query(
+        `UPDATE clientes_proyectos
+         SET datos = jsonb_set(datos, '{estado}', '"pendiente"'),
+             updated_at = now()
+         WHERE id_cliente = ANY($1::text[]) AND proyecto_id = 1`,
+        [updatesReabrir]
+      );
     }
 
     return NextResponse.json({

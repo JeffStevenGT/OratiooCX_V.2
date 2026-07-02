@@ -18,15 +18,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 });
   }
 
-  const { comando, workers, maquina } = await req.json();
+  const { comando, workers, maquina, proxy } = await req.json();
   if (!comando) return NextResponse.json({ error: 'Falta comando' }, { status: 400 });
 
   const params: Record<string, any> = {};
   if (workers && comando === 'iniciar') {
     params.workers = Math.max(1, Math.min(20, workers));
   }
+  if (proxy !== undefined) {
+    params.proxy = !!proxy;
+  }
 
   const destino = maquina || '*';
+
+  // Limpiar comandos viejos (en_curso > 1 hora)
+  await pool.query(
+    `DELETE FROM comandos_bot WHERE estado = 'en_curso' AND ejecutado_at < now() - interval '1 hour'`
+  );
 
   await pool.query(
     `INSERT INTO comandos_bot (maquina_destino, comando, parametros, estado)

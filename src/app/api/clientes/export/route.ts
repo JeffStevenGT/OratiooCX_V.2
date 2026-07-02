@@ -228,8 +228,8 @@ export async function GET(req: Request) {
     const conditions: string[] = [];
     conditions.push("cp.proyecto_id = p.pid");
     conditions.push("cp.datos->>'estado' IN ('completado', 'no_cliente', 'sin_datos', 'no_cargable', 'error')");
-    if (from) { conditions.push(`cp.ultima_extraccion AT TIME ZONE 'America/Lima' >= $${params.length + 1}::date`); params.push(from); }
-    if (to) { conditions.push(`cp.ultima_extraccion AT TIME ZONE 'America/Lima' < $${params.length + 1}::date + interval '1 day'`); params.push(to); }
+    if (from) { conditions.push(`cp.ultima_extraccion >= $${params.length + 1}::date`); params.push(from); }
+    if (to) { conditions.push(`cp.ultima_extraccion < $${params.length + 1}::date + interval '1 day'`); params.push(to); }
     const where = conditions.join(' AND ');
 
     const baseQuery = `WITH proyecto AS (SELECT id AS pid FROM proyectos WHERE nombre = 'orange')
